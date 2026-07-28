@@ -13,6 +13,7 @@ const os = require('os');
 const STATUS_DIR =
   process.env.CLAUDE_USAGE_TRAY_STATUS_DIR ||
   path.join(os.homedir(), '.claude', 'usage-tray-status');
+const SAFE_SESSION_ID = /^[a-zA-Z0-9._-]{1,200}$/;
 
 const STATE_BY_EVENT = {
   UserPromptSubmit: 'working', // user sent a prompt -> Claude is busy
@@ -34,7 +35,7 @@ process.stdin.on('end', () => {
       process.exit(0);
     }
     const state = STATE_BY_EVENT[evt.hook_event_name];
-    if (!evt.session_id || !state) process.exit(0);
+    if (!SAFE_SESSION_ID.test(String(evt.session_id || '')) || !state) process.exit(0);
     const file = path.join(STATUS_DIR, evt.session_id + '.json');
     if (state === 'ended') {
       try {

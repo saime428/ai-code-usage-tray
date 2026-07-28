@@ -15,7 +15,7 @@ Claude Code 把每个会话的转录写在 `~/.claude/projects/<目录名>/<sess
 - 每行一个 JSON。`type: "assistant"` 的行带 `message.model`、`message.usage`、`timestamp`(UTC ISO)、`cwd`。
 - `usage` 字段:`input_tokens`、`output_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`。
 - 流式输出会用同一个 `message.id` 重写多行,**必须按 id 去重取最后一条**(lib/usage.js 已处理)。
-- 定价表在 `lib/usage.js` 的 `PRICES`(2026-07-26 官方标准 API 价快照,cache 写 1.25x / cache 读 0.1x)。订阅用户不按 token 计费,所以 UI 上标注为「等价 API 价值」。
+- 定价表在 `lib/usage.js` 的 `PRICES`(2026-07-26 官方标准 API 价快照,5 分钟 cache 写 1.25x、1 小时写 2x、cache 读 0.1x)。订阅用户不按 token 计费,所以 UI 上标注为「等价 API 价值」。
 - Codex Desktop 与 CLI 都把会话写在 `~/.codex/sessions/**/*.jsonl`;`turn_context` 给出模型,`token_count` 给出累计 token 和真实额度窗口。`lib/codex-usage.js` 按相邻累计值做差,同时覆盖两种客户端,并按 GPT-5.6 官方 API 价格计算等价价值。
 - Claude Desktop 会话元数据位于 `%APPDATA%/Claude/claude-code-sessions/**/*.json`;用 `cliSessionId` 关联 transcript,有 `bridgeSessionIds` 时可精确深链,否则唤起 Claude 并复制标题。
 
@@ -44,7 +44,7 @@ npm run dist      # 测试后生成 Windows x64 便携版到 dist/
 - [x] **贴边悬浮条**:主屏顶部/右侧可选,5h/7d 收起态、悬停详情、全屏自动隐藏,与托盘面板共享刷新。
 - [x] **Desktop 会话跳转**:Codex 精确打开 task;Claude 有 bridge id 时精确打开,否则复制标题并唤起客户端;CLI 不启动终端。
 - [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 便携版,中英 README 已完成。
-- [ ] **公开发布**:MIT + GitHub 公开仓库 → GitHub Release → 干净 Windows 验证 → 提 PR 到 chinese-independent-developer。
+- [x] **公开发布**:MIT + GitHub 公开仓库 + v1.0.0 Release 已完成；后续再做干净 Windows 验证和社区收录。
 - [ ] 自动更新:首个 GitHub Release 稳定后接入版本检查与下载安装。
 - [ ] 增量读取:按文件记 byte offset,只读新增部分(目前每 30s 全量重读,转录很大时再做)。
 

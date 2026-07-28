@@ -699,11 +699,13 @@ while ($true) {
       updateFloatingVisibility();
     }
   });
-  fullscreenWatcher.on('exit', () => {
+  const resetFullscreenState = () => {
     fullscreenWatcher = null;
     fullscreenActive = false;
     updateFloatingVisibility();
-  });
+  };
+  fullscreenWatcher.once('error', resetFullscreenState);
+  fullscreenWatcher.once('exit', resetFullscreenState);
 }
 
 app.whenReady().then(() => {
@@ -766,8 +768,8 @@ ipcMain.handle('claude-auth-cancel', (event) => {
 });
 ipcMain.handle('claude-auth-disconnect', async (event) => {
   if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的账户请求');
-  disconnectClaudeAccount();
   if (refreshPromise) await refreshPromise.catch(() => {});
+  disconnectClaudeAccount();
   await refreshUsage();
   return claudeAuthStatus();
 });
