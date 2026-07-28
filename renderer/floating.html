@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'" />
+  <title>AI Code Usage</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111116;
+      --surface: #19191f;
+      --muted: #8f8f99;
+      --text: #f2f0ed;
+      --border: #34343d;
+      --track: #303038;
+      --claude: #d97757;
+      --ok: #4caf6e;
+      --warn: #d9a441;
+      --danger: #e45858;
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      color: var(--text);
+      font: 12px/1.35 'Segoe UI', system-ui, sans-serif;
+      user-select: none;
+    }
+    #surface {
+      position: absolute;
+      overflow: hidden;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--bg) 96%, transparent);
+      box-shadow: 0 8px 24px #0008;
+      will-change: clip-path;
+      transition: clip-path 280ms cubic-bezier(.4, 0, 1, 1), border-color 180ms ease, background-color 180ms ease;
+    }
+    #surface::after {
+      content: '';
+      position: absolute;
+      z-index: 3;
+      pointer-events: none;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      opacity: 1;
+      transition: opacity 120ms ease-in;
+    }
+    #surface:hover { border-color: #4a4a55; background: #15151a; }
+    #surface:hover::after { border-color: #4a4a55; }
+    .compact {
+      position: absolute;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 5px 12px;
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 140ms ease-out 90ms, transform 220ms ease-out, visibility 0s;
+    }
+    .compact-provider { min-width: 0; display: flex; align-items: center; gap: 7px; }
+    .compact-provider + .compact-provider { padding-left: 14px; border-left: 1px solid #303038; }
+    .brand { width: 20px; height: 20px; flex: none; fill: currentColor; }
+    .brand.claude { color: var(--claude); }
+    .brand.openai { color: #f2f0ed; }
+    .metrics { display: flex; align-items: baseline; gap: 7px; font-variant-numeric: tabular-nums; }
+    .metric { color: #d4d2cf; white-space: nowrap; }
+    .metric b { margin-right: 2px; color: var(--muted); font-size: 10px; font-weight: 600; }
+    .dash { color: var(--muted); }
+    .warning { color: var(--warn); font-weight: 700; }
+    .stale { opacity: .62; }
+    .details {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      padding: 8px;
+      gap: 8px;
+      grid-template-columns: 1fr 1fr;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-4px) scale(.985);
+      transition: opacity 140ms ease-in, transform 200ms ease-in, visibility 0s linear 200ms;
+    }
+    body.expanded #surface::after { opacity: 0; }
+    body.expanded .compact {
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(.98);
+      transition: opacity 140ms ease-in 140ms, transform 240ms ease-in, visibility 0s linear 280ms;
+    }
+    body.expanded .details {
+      opacity: 1;
+      visibility: visible;
+      transform: none;
+      transition: opacity 220ms ease-out 120ms, transform 280ms cubic-bezier(.23, 1, .32, 1) 100ms, visibility 0s;
+    }
+    .provider {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid #2b2b33;
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .provider-head { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+    .provider-head .brand { width: 18px; height: 18px; }
+    .provider-name { font-weight: 650; }
+    .cost { margin-left: auto; color: #f0a07f; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .cost small { color: var(--muted); font-size: 9px; font-weight: 500; }
+    .quota { margin-top: 6px; }
+    .quota-head { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+    .quota-head strong { font-size: 11px; }
+    .quota-head span { color: #d4d2cf; }
+    .bar { height: 4px; margin: 4px 0; overflow: hidden; border-radius: 4px; background: var(--track); }
+    .bar i { display: block; height: 100%; background: var(--ok); }
+    .bar i.warn { background: var(--warn); }
+    .bar i.danger { background: var(--danger); }
+    .reset, .provider-status { color: var(--muted); font-size: 10px; }
+    .provider-status { display: flex; align-items: center; gap: 4px; margin-top: 8px; }
+    .provider-status.bad { color: var(--warn); }
+    .provider-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
+    .provider-status.bad::before { background: var(--warn); }
+    .empty-quota { padding: 18px 0 12px; color: var(--muted); text-align: center; }
+    body.position-top #surface { top: 2px; left: 50%; width: 436px; height: 220px; clip-path: inset(0 40px 182px 40px round 12px); transform: translateX(-50%); }
+    body.position-top #surface::after { top: 0; left: 40px; width: 356px; height: 38px; }
+    body.position-top .compact { top: 0; left: 40px; width: 356px; height: 38px; }
+    body.position-right #surface { top: 50%; right: 2px; width: 322px; height: 324px; clip-path: inset(41px 0 41px 268px round 12px); transform: translateY(-50%); }
+    body.position-right #surface::after { top: 41px; left: 268px; width: 54px; height: 242px; }
+    body.position-right .compact { top: 41px; left: 268px; width: 54px; height: 242px; flex-direction: column; gap: 14px; padding: 10px 5px; }
+    body.expanded.position-top #surface,
+    body.expanded.position-right #surface { clip-path: inset(0 round 12px); transition: clip-path 400ms cubic-bezier(.23, 1, .32, 1), border-color 180ms ease, background-color 180ms ease; }
+    body.position-right .compact-provider { width: 100%; flex-direction: column; gap: 5px; }
+    body.position-right .compact-provider + .compact-provider { padding: 14px 0 0; border-top: 1px solid #303038; border-left: 0; }
+    body.position-right .metrics { flex-direction: column; gap: 2px; align-items: center; }
+    body.position-right .metric { font-size: 10px; }
+    body.position-right .metric b { display: block; margin: 0; text-align: center; font-size: 8px; }
+    body.position-right .details { grid-template-columns: 1fr; }
+    body.position-right .provider { padding: 8px 10px; }
+    body.position-right .provider-head { margin-bottom: 3px; }
+    body.position-right .quota { margin-top: 3px; }
+    body.position-right .provider-status { margin-top: 5px; }
+    @media (prefers-reduced-motion: reduce) {
+      #surface, #surface::after, .compact, .details, body.expanded #surface, body.expanded .compact, body.expanded .details { transition: none; }
+    }
+  </style>
+</head>
+<body class="position-top">
+  <main id="surface" role="button" aria-label="打开 AI Code Usage 完整面板">
+    <div class="compact" id="compact"></div>
+    <div class="details" id="details"></div>
+  </main>
+  <script>
+    const providerInfo = {
+      claude: { name: 'Claude', logo: 'claude', logoClass: 'claude' },
+      codex: { name: 'Codex', logo: 'openai', logoClass: 'openai' },
+    };
+    let latest = null;
+    let expanded = false;
+    let expandTimer = null;
+    let collapseTimer = null;
+
+    const logo = (provider) => {
+      const info = providerInfo[provider];
+      return `<svg class="brand ${info.logoClass}" aria-hidden="true"><use href="provider-logos.svg#${info.logo}"></use></svg>`;
+    };
+    const windowsFor = (provider, usage) =>
+      provider === 'claude'
+        ? [
+            ['5h', usage.rateLimits && usage.rateLimits.fiveHour],
+            ['7d', usage.rateLimits && usage.rateLimits.sevenDay],
+          ].filter(([, value]) => value)
+        : [
+            ['5h', usage.rateLimits && usage.rateLimits.windows.find((value) => value.windowMinutes === 300)],
+            ['7d', usage.rateLimits && usage.rateLimits.windows.find((value) => value.windowMinutes === 10080)],
+          ].filter(([, value]) => value);
+    const isStale = (usage) =>
+      usage.dataStatus?.state !== 'ok' || Boolean(usage.rateLimits && usage.rateLimits.stale);
+    const statusText = (usage) => {
+      if (usage.dataStatus?.state !== 'ok') return usage.dataStatus.message || '本地数据读取失败';
+      if (!usage.rateLimits) return '额度数据尚不可用';
+      if (usage.rateLimits.stale) return '额度数据已超过 15 分钟未更新';
+      const updatedAt = usage.rateLimits.updatedAt;
+      if (!Number.isFinite(updatedAt)) return '额度数据正常';
+      const minutes = Math.max(0, Math.round((Date.now() - updatedAt) / 60000));
+      if (usage.rateLimits.source === 'desktop') return minutes < 1 ? 'Desktop 刚刚采样' : `Desktop ${minutes} 分钟前采样`;
+      return minutes < 1 ? '刚刚更新' : `${minutes} 分钟前更新`;
+    };
+    const resetText = (value) => value.resetsAt
+      ? `${value.resetEstimated ? '≈ ' : ''}${new Date(value.resetsAt * 1000).toLocaleString('zh-CN', {
+          month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        })} 重置`
+      : '';
+
+    function render() {
+      if (!latest) return;
+      document.getElementById('compact').innerHTML = ['claude', 'codex']
+        .map((provider) => {
+          const usage = latest[provider];
+          const windows = windowsFor(provider, usage);
+          return `<div class="compact-provider ${isStale(usage) ? 'stale' : ''}">
+            ${logo(provider)}
+            <div class="metrics">${windows.length
+              ? windows.map(([label, value]) => `<span class="metric"><b>${label}</b>${Math.round(value.usedPercentage)}%</span>`).join('')
+              : '<span class="dash">—</span>'}</div>
+            ${isStale(usage) ? '<span class="warning" title="数据可能已过期">!</span>' : ''}
+          </div>`;
+        })
+        .join('');
+      document.getElementById('details').innerHTML = ['claude', 'codex']
+        .map((provider) => {
+          const info = providerInfo[provider];
+          const usage = latest[provider];
+          const windows = windowsFor(provider, usage);
+          const stale = isStale(usage);
+          return `<section class="provider ${stale ? 'stale' : ''}">
+            <div class="provider-head">${logo(provider)}<span class="provider-name">${info.name}</span>
+              <span class="cost"><small>今日等价值</small> ≈$${usage.costUSD.toFixed(2)}</span></div>
+            ${windows.length ? windows.map(([label, value]) => {
+              const pct = Math.round(value.usedPercentage);
+              const level = pct >= 95 ? 'danger' : pct >= 80 ? 'warn' : '';
+              const reset = resetText(value);
+              return `<div class="quota"><div class="quota-head"><strong>${label}</strong><span>${pct}% 已用</span></div>
+                <div class="bar"><i class="${level}" style="width:${Math.min(100, Math.max(0, pct))}%"></i></div>
+                ${reset ? `<div class="reset">${reset}</div>` : ''}</div>`;
+            }).join('') : '<div class="empty-quota">额度 —</div>'}
+            <div class="provider-status ${stale || !usage.rateLimits ? 'bad' : ''}" title="${usage.rateLimits?.source === 'desktop' ? 'Claude Desktop 每约 5 分钟采样；≈ 为本地推算时间' : ''}">${statusText(usage)}${usage.rateLimits?.source === 'desktop' ? ' · 重置时间为本地推算' : ''}</div>
+          </section>`;
+        })
+        .join('');
+    }
+
+    function applyState(state) {
+      expanded = Boolean(state.expanded);
+      document.body.classList.toggle('expanded', expanded);
+      document.body.classList.toggle('position-top', state.position === 'top');
+      document.body.classList.toggle('position-right', state.position === 'right');
+    }
+
+    const surface = document.getElementById('surface');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    surface.addEventListener('mouseenter', () => {
+      clearTimeout(collapseTimer);
+      if (!expanded) expandTimer = setTimeout(() => window.api.setFloatingExpanded(true, reduceMotion.matches), 200);
+    });
+    surface.addEventListener('mouseleave', () => {
+      clearTimeout(expandTimer);
+      if (expanded) collapseTimer = setTimeout(() => window.api.setFloatingExpanded(false, reduceMotion.matches), 300);
+    });
+    surface.addEventListener('click', () => window.api.openPanel());
+    window.api.onUsage((usage) => { latest = usage; render(); });
+    window.api.getUsage().then((usage) => { latest = usage; render(); });
+    window.api.getFloatingState().then(applyState);
+    window.api.onFloatingState?.(applyState);
+  </script>
+</body>
+</html>

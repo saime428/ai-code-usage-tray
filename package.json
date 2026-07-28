@@ -1,0 +1,54 @@
+{
+  "name": "ai-code-usage-tray",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Windows tray monitor for Claude Code and Codex usage and session activity",
+  "author": "saixin",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/saime428/ai-code-usage-tray.git"
+  },
+  "homepage": "https://github.com/saime428/ai-code-usage-tray#readme",
+  "bugs": "https://github.com/saime428/ai-code-usage-tray/issues",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test lib/usage.test.js",
+    "usage": "node scripts/print-usage.js",
+    "icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-icon.ps1",
+    "dist": "npm test && electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.aicode.usage-tray",
+    "productName": "AI Code Usage Tray",
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "files": [
+      "main.js",
+      "preload.js",
+      "lib/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "AI-Code-Usage-Tray-${version}-win-${arch}.${ext}"
+    }
+  }
+}

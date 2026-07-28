@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">AI Code Usage Tray</title>
+  <desc id="desc">Animated preview of a local Windows tray monitor for Claude and Codex usage.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#090d16"/>
+      <stop offset="0.52" stop-color="#111827"/>
+      <stop offset="1" stop-color="#09111c"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff7a59"/>
+      <stop offset="0.5" stop-color="#ffb45e"/>
+      <stop offset="1" stop-color="#62d6a4"/>
+    </linearGradient>
+    <linearGradient id="scan" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="orbOrange">
+      <stop offset="0" stop-color="#ff7a59" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#ff7a59" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="orbGreen">
+      <stop offset="0" stop-color="#62d6a4" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#62d6a4" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.035"/>
+    </pattern>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#000" flood-opacity="0.42"/>
+    </filter>
+    <clipPath id="frame"><rect width="1200" height="420" rx="30"/></clipPath>
+  </defs>
+  <style>
+    text { font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    .float { animation: float 4.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .pulse { animation: pulse 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    .dash { animation: dash 3s linear infinite; }
+    .scan { animation: sweep 6s ease-in-out infinite; }
+    .bar-a { animation: barA 4s ease-in-out infinite; }
+    .bar-b { animation: barB 4.8s ease-in-out infinite; }
+    .orb-a { animation: driftA 10s ease-in-out infinite; }
+    .orb-b { animation: driftB 12s ease-in-out infinite; }
+    @keyframes float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+    @keyframes pulse { 0%,100% { opacity:.55; transform:scale(.82) } 50% { opacity:1; transform:scale(1.18) } }
+    @keyframes dash { to { stroke-dashoffset:-64 } }
+    @keyframes sweep { 0%,15% { transform:translateX(-320px) } 70%,100% { transform:translateX(1320px) } }
+    @keyframes barA { 0%,100% { width:38px } 50% { width:48px } }
+    @keyframes barB { 0%,100% { width:112px } 50% { width:126px } }
+    @keyframes driftA { 0%,100% { transform:translate(0,0) } 50% { transform:translate(42px,24px) } }
+    @keyframes driftB { 0%,100% { transform:translate(0,0) } 50% { transform:translate(-34px,-18px) } }
+    @media (prefers-reduced-motion: reduce) {
+      .float,.pulse,.dash,.scan,.bar-a,.bar-b,.orb-a,.orb-b { animation:none !important; }
+    }
+  </style>
+
+  <g clip-path="url(#frame)">
+    <rect width="1200" height="420" rx="30" fill="url(#bg)"/>
+    <rect width="1200" height="420" fill="url(#grid)"/>
+    <circle class="orb-a" cx="145" cy="42" r="230" fill="url(#orbOrange)"/>
+    <circle class="orb-b" cx="1110" cy="388" r="270" fill="url(#orbGreen)"/>
+    <rect class="scan" x="-260" y="-80" width="210" height="580" transform="skewX(-18)" fill="url(#scan)"/>
+
+    <g class="float">
+      <rect x="70" y="48" width="215" height="32" rx="16" fill="#ffffff" fill-opacity="0.055" stroke="#ffffff" stroke-opacity="0.09"/>
+      <circle cx="89" cy="64" r="5" fill="#62d6a4" filter="url(#glow)"/>
+      <text x="103" y="69" fill="#b8c3d9" font-size="12" font-weight="700" letter-spacing="1.3">LOCAL-FIRST · WINDOWS</text>
+    </g>
+
+    <g class="float" style="animation-delay:-1.4s">
+      <rect x="70" y="104" width="82" height="82" rx="23" fill="#151c29" stroke="url(#accent)" stroke-width="2"/>
+      <path d="M94 133 82 145l12 12M128 133l12 12-12 12M117 124l-12 42" fill="none" stroke="url(#accent)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <text x="70" y="235" fill="#f6f8fc" font-size="48" font-weight="800" letter-spacing="-1.5">AI CODE</text>
+    <text x="70" y="286" fill="url(#accent)" font-size="48" font-weight="800" letter-spacing="-1.5">USAGE TRAY</text>
+    <text x="72" y="320" fill="#9ba8bd" font-size="16">Claude + Codex 用量、额度与会话状态，一处看清。</text>
+
+    <g font-size="11" font-weight="700" letter-spacing="0.7">
+      <rect x="70" y="344" width="94" height="30" rx="15" fill="#ff7a59" fill-opacity="0.11" stroke="#ff7a59" stroke-opacity="0.35"/>
+      <text x="89" y="364" fill="#ff9a7f">NO API KEY</text>
+      <rect x="174" y="344" width="106" height="30" rx="15" fill="#62d6a4" fill-opacity="0.1" stroke="#62d6a4" stroke-opacity="0.32"/>
+      <text x="192" y="364" fill="#7be1b3">30s REFRESH</text>
+      <rect x="290" y="344" width="102" height="30" rx="15" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.1"/>
+      <text x="309" y="364" fill="#b8c3d9">LOCAL ONLY</text>
+    </g>
+
+    <path class="dash" d="M622 72v274" stroke="#ffffff" stroke-opacity="0.11" stroke-width="1.5" stroke-dasharray="7 9"/>
+    <circle class="pulse" cx="622" cy="209" r="5" fill="#ff9a6c" filter="url(#glow)"/>
+
+    <g filter="url(#shadow)">
+      <rect x="676" y="45" width="452" height="330" rx="24" fill="#111722" stroke="#ffffff" stroke-opacity="0.1"/>
+      <rect x="698" y="67" width="408" height="44" rx="12" fill="#ffffff" fill-opacity="0.035"/>
+      <text x="716" y="86" fill="#f2f5fb" font-size="13" font-weight="700">Claude <tspan fill="#657086">/ Codex</tspan></text>
+      <circle class="pulse" cx="1082" cy="88" r="5" fill="#62d6a4"/>
+      <text x="996" y="92" fill="#738098" font-size="10" letter-spacing="0.8">LIVE LOCAL</text>
+
+      <text x="716" y="152" fill="#ff8b68" font-size="33" font-weight="800">≈ $12.84</text>
+      <text x="718" y="174" fill="#748198" font-size="11">in 86 · out 21.4k · cache 8.7M</text>
+
+      <rect x="716" y="198" width="176" height="55" rx="11" fill="#0c111b"/>
+      <text x="730" y="217" fill="#dbe2ef" font-size="12" font-weight="700">5h</text>
+      <text x="854" y="217" fill="#8e9bb0" font-size="11" text-anchor="end">26%</text>
+      <rect x="730" y="230" width="148" height="5" rx="2.5" fill="#252d3a"/>
+      <rect class="bar-a" x="730" y="230" width="38" height="5" rx="2.5" fill="#62d6a4"/>
+
+      <rect x="904" y="198" width="184" height="55" rx="11" fill="#0c111b"/>
+      <text x="918" y="217" fill="#dbe2ef" font-size="12" font-weight="700">7d</text>
+      <text x="1074" y="217" fill="#8e9bb0" font-size="11" text-anchor="end">72%</text>
+      <rect x="918" y="230" width="156" height="5" rx="2.5" fill="#252d3a"/>
+      <rect class="bar-b" x="918" y="230" width="112" height="5" rx="2.5" fill="#62d6a4"/>
+
+      <text x="716" y="280" fill="#718096" font-size="10" font-weight="700" letter-spacing="1.2">RECENT SESSIONS</text>
+      <circle class="pulse" cx="721" cy="305" r="4.5" fill="#ffb44f"/>
+      <text x="735" y="309" fill="#d9dfeb" font-size="12">Landing page visual review</text>
+      <text x="1077" y="309" fill="#758299" font-size="10" text-anchor="end">等你 · 1m</text>
+      <line x1="716" y1="323" x2="1088" y2="323" stroke="#ffffff" stroke-opacity="0.06"/>
+      <circle cx="721" cy="344" r="4.5" fill="#4c5668"/>
+      <text x="735" y="348" fill="#8c98aa" font-size="12">Release checklist</text>
+      <text x="1077" y="348" fill="#596476" font-size="10" text-anchor="end">空闲 · 6h</text>
+    </g>
+  </g>
+  <rect x="1" y="1" width="1198" height="418" rx="29" fill="none" stroke="url(#accent)" stroke-opacity="0.48" stroke-width="2"/>
+</svg>
