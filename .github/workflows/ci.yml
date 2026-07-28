@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AI-Code-Usage-Tray-win-x64
+          path: dist/AI-Code-Usage-Tray-*-win-x64.exe
+          if-no-files-found: error

@@ -41,7 +41,7 @@
 4. 右键悬浮条或托盘图标，可刷新、切换顶部/右侧、隐藏悬浮条或退出。
 
 > [!WARNING]
-> 当前便携版尚未购买 Windows 代码签名证书，SmartScreen 可能显示提醒。请只从本仓库的 Releases 下载，并核对 Release 中提供的 SHA-256。
+> v1.0.1 及更早版本尚未进行 Windows 代码签名，SmartScreen 可能显示提醒。请只从本仓库的 Releases 下载，并核对 Release 中提供的 SHA-256。后续签名版本将按下方 [Code signing policy](#code-signing-policy) 发布。
 
 ## 数据从哪里来
 
@@ -77,6 +77,14 @@ Claude CLI 配置 hooks 时可获得更准确的 waiting / attention 状态；�
 - 不读取浏览器 Cookie，不要求 Anthropic / OpenAI API Key。
 - 本地文件损坏、被锁定或权限不足时保留上一份快照，并明确标为过期。
 - OAuth 登录为可选功能；网络或 Anthropic 限流失败时，本地用量监控仍可继续工作。
+- 完整说明见 [Privacy Policy](PRIVACY.md)。
+
+## Code signing policy
+
+- Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+- SignPath-signed releases will be built from this repository by [GitHub Actions](.github/workflows/ci.yml) and manually approved before signing. v1.0.1 and earlier remain unsigned.
+- Committer, reviewer, and approver: [@saime428](https://github.com/saime428).
+- Privacy policy: [PRIVACY.md](PRIVACY.md).
 
 ## 本地开发
 
@@ -125,7 +133,7 @@ git status --short
 
 - Windows x64 only。
 - 尚未接入自动更新。
-- 便携版尚未进行商业代码签名。
+- v1.0.1 及更早版本尚未进行代码签名；SignPath Foundation 申请和自动签名接入正在进行。
 - Claude OAuth 可能受 Anthropic 限流或当前网络出口影响；本地推算不受影响。
 
 ## 贡献
@@ -143,7 +151,7 @@ npm test
 
 **AI Code Usage Tray** is a local-first Windows tray monitor for Claude Code/Desktop and Codex CLI/Desktop. It shows daily tokens, API-equivalent value, available 5-hour / 7-day rate-limit windows, reset times, and recent session activity without uploading transcript contents or requiring API keys.
 
-Download the portable x64 executable from [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest), or clone the repository and run `npm ci`, `npm test`, and `npm start`.
+Download the portable x64 executable from [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest), or clone the repository and run `npm ci`, `npm test`, and `npm start`. See the [Privacy Policy](PRIVACY.md) and [Code signing policy](#code-signing-policy).
 
 ## License
 
