@@ -41,7 +41,7 @@
 4. 右键悬浮条或托盘图标，可刷新、切换顶部/右侧、隐藏悬浮条或退出。
 
 > [!WARNING]
-> v1.0.1 及更早版本尚未进行 Windows 代码签名，SmartScreen 可能显示提醒。请只从本仓库的 Releases 下载，并核对 Release 中提供的 SHA-256。后续签名版本将按下方 [Code signing policy](#code-signing-policy) 发布。
+> 当前便携版尚未进行 Windows 代码签名，SmartScreen 可能显示提醒。请只从本仓库的 Releases 下载，并核对 Release 中提供的 SHA-256。后续签名版本将按下方 [Code signing policy](#code-signing-policy) 发布。
 
 ## 数据从哪里来
 
@@ -52,6 +52,8 @@
 | Claude Desktop | `%APPDATA%/Claude/claude-code-sessions/**/*.json` | 标题、客户端类型、最近活动 |
 | Claude 账户（可选） | Anthropic OAuth 用量接口 | 官方百分比与精确重置时间 |
 | Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | token、额度窗口、模型、会话活动 |
+
+Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/` 下的同名数据文件。
 
 ### 重置时间与刷新频率
 
@@ -133,7 +135,7 @@ git status --short
 
 - Windows x64 only。
 - 尚未接入自动更新。
-- v1.0.1 及更早版本尚未进行代码签名；SignPath Foundation 申请和自动签名接入正在进行。
+- 当前便携版尚未进行代码签名；SignPath Foundation 申请和自动签名接入正在进行。
 - Claude OAuth 可能受 Anthropic 限流或当前网络出口影响；本地推算不受影响。
 
 ## 贡献
