@@ -1,6 +1,6 @@
 {
   "name": "ai-code-usage-tray",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Windows tray monitor for Claude Code and Codex usage and session activity",
   "author": "saixin",
