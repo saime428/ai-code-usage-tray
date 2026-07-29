@@ -168,7 +168,7 @@
     .dot.attention { background: var(--danger); }
     .session .name { min-width: 0; overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
     .session .ago { flex: none; color: var(--muted); font-size: 11px; }
-    .client { margin-left: 4px; color: #73737d; font-size: 10px; }
+    .client { flex: none; color: #73737d; font-size: 10px; }
     .open-icon { width: 12px; height: 12px; flex: none; stroke: var(--muted); }
     .session-error { min-height: 0; padding: 0 3px 2px 19px; color: var(--danger); font-size: 10px; }
     .empty { padding: 12px 0; color: var(--muted); }
@@ -310,7 +310,8 @@
         const title = [session.cwd, session.client, session.message].filter(Boolean).join('\n');
         const label = session.title || session.project;
         const content = `<span class="dot ${state}"></span>
-          <span class="name" title="${esc(title)}">${esc(label)}<span class="client">${esc(session.client || '')}</span></span>
+          <span class="name" title="${esc(title)}">${esc(label)}</span>
+          <span class="client">${esc(session.client || '')}</span>
           <span class="ago">${stateLabel[state]} · ${ago} 前</span>`;
         return session.client === 'Desktop'
           ? `<div><button type="button" class="session session-button" data-session-index="${index}" aria-label="在 ${isClaude ? 'Claude' : 'Codex'} Desktop 打开 ${esc(label)}">${content}
