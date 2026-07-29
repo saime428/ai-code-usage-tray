@@ -365,15 +365,11 @@
       errorEl.textContent = '';
       document.getElementById('feedback').textContent = '';
       try {
-        const result = await window.api.openSession({
+        await window.api.openSession({
           provider: selected,
           client: session.client,
           sessionId: session.sessionId,
-          bridgeSessionId: session.bridgeSessionId,
-          title: session.title,
-          project: session.project,
         });
-        if (result.copied) document.getElementById('feedback').textContent = '已复制会话标题，正在打开 Claude Desktop…';
       } catch (error) {
         errorEl.textContent = String(error.message || '打开失败').replace(/^.*Error: /, '');
       } finally {

@@ -17,7 +17,7 @@ Claude Code 把每个会话的转录写在 `~/.claude/projects/<目录名>/<sess
 - 流式输出会用同一个 `message.id` 重写多行,**必须按 id 去重取最后一条**(lib/usage.js 已处理)。
 - 定价表在 `lib/usage.js` 的 `PRICES`(2026-07-26 官方标准 API 价快照,5 分钟 cache 写 1.25x、1 小时写 2x、cache 读 0.1x)。订阅用户不按 token 计费,所以 UI 上标注为「等价 API 价值」。
 - Codex Desktop 与 CLI 都把会话写在 `~/.codex/sessions/**/*.jsonl`;`turn_context` 给出模型,`token_count` 给出累计 token 和真实额度窗口。`lib/codex-usage.js` 按相邻累计值做差,同时覆盖两种客户端,并按 GPT-5.6 官方 API 价格计算等价价值。
-- Claude Desktop 会话元数据位于 `%APPDATA%/Claude/claude-code-sessions/**/*.json`;用 `cliSessionId` 关联 transcript,有 `bridgeSessionIds` 时可精确深链,否则唤起 Claude 并复制标题。
+- Claude Desktop 会话元数据位于 `%APPDATA%/Claude/claude-code-sessions/**/*.json`;用 `cliSessionId` 关联 transcript,并通过 `claude://resume?session=<cliSessionId>` 直接打开对应会话。
 
 ## 架构
 

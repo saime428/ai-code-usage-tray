@@ -9,7 +9,6 @@ const {
   Notification,
   screen,
   shell,
-  clipboard,
   safeStorage,
   net,
 } = require('electron');
@@ -776,24 +775,13 @@ ipcMain.handle('claude-auth-disconnect', async (event) => {
 ipcMain.handle('open-session', async (event, session) => {
   if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的会话请求');
   const target = sessionTarget(session);
-  if (!target.exact) {
-    clipboard.writeText(target.copyText);
-    suppressPanelBlur = true;
-  }
   try {
     await shell.openExternal(target.uri);
   } catch {
-    suppressPanelBlur = false;
     throw new Error('无法打开桌面客户端');
   }
-  if (target.exact) panelWin.hide();
-  else {
-    setTimeout(() => {
-      suppressPanelBlur = false;
-      if (panelWin && panelWin.isVisible()) panelWin.hide();
-    }, 1400);
-  }
-  return { exact: target.exact, copied: !target.exact };
+  panelWin.hide();
+  return { exact: true };
 });
 
 app.on('before-quit', () => {

@@ -28,7 +28,7 @@
 | --- | --- |
 | **Claude + Codex 一处查看** | 同时聚合 Claude Code、Claude Desktop、Codex CLI 和 Codex Desktop。 |
 | **额度窗口** | 显示可用的 5h / 7d 使用比例、重置时间和数据新鲜度。 |
-| **会话状态** | 区分工作中、等你、需处理和空闲；Desktop 会话可从面板打开。 |
+| **会话状态** | 区分工作中、等你、需处理和空闲；Desktop 会话可从面板直接打开。 |
 | **贴边悬浮条** | 顶部或右侧常驻，悬停展开；全屏应用前自动隐藏。 |
 | **本地优先** | 默认只读取本机客户端已产生的数据，不上传提示词或会话内容。 |
 | **零 API Key** | 本地模式无需 API Key；Claude OAuth 只是可选的精确额度来源。 |
@@ -71,7 +71,7 @@ Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Clau
 | 🔴 | 需处理 | 权限确认或其他需要人工操作的事件 |
 | ⚫ | 空闲 | 最近没有活动 |
 
-Claude CLI 配置 hooks 时可获得更准确的 waiting / attention 状态；没有 hook 时使用会话写入时间回退。新写入的 transcript 会覆盖过期 hook，避免正在运行时仍显示旧的“等你”。
+Claude CLI 配置 hooks 时可获得更准确的 waiting / attention 状态；没有 hook 时使用会话写入时间回退。新写入的 transcript 会覆盖过期 hook，避免正在运行时仍显示旧的“等你”；超过 30 分钟未更新的 hook 状态会回落为空闲。
 
 ## 隐私与安全
 
