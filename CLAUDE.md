@@ -22,7 +22,7 @@ Claude Code 把每个会话的转录写在 `~/.claude/projects/<目录名>/<sess
 ## 架构
 
 - `lib/usage.js` / `lib/codex-usage.js` — 纯 Node 数据层,无 Electron 依赖,分别返回今日按模型聚合 + 24h 会话列表。
-- `main.js` — Electron 主进程:托盘图标、原生注意提醒、完整面板、顶部/右侧悬浮条、共享 30s 快照、全屏检测、安全桌面深链和 Claude OAuth 加密存储。
+- `main.js` — Electron 主进程:托盘图标、原生注意提醒、完整面板、顶部/右侧悬浮条、共享 30s 快照、安全桌面深链和 Claude OAuth 加密存储。
 - `lib/claude-oauth.js` — Claude 浏览器 PKCE 授权（固定网页回调 + 手动粘贴登录码）、令牌刷新和官方额度响应解析；令牌本身由主进程通过 Electron `safeStorage` 保存。
 - `preload.js` + `renderer/index.html` / `floating.html` — contextBridge 暴露最小 IPC,两套无框架 UI 共用同一份用量快照。
 
@@ -41,7 +41,7 @@ npm run dist      # 测试后生成 Windows x64 便携版到 dist/
 - [x] **官方额度**:自动读取 Claude Desktop `plan-usage-history.json` 和 Claude Code statusLine,校验后取最新来源;字段缺失时隐藏,不按 token 猜额度。
 - [x] **Claude 账户连接**:可选浏览器 OAuth,使用 Claude Code 当前固定网页回调并粘贴登录码,令牌仅由本应用加密保存,每 5 分钟读取官方重置时间并自动刷新过期令牌。
 - [x] **Codex 支持**:读取 Desktop/CLI 共用的 `~/.codex/sessions`,展示 token、模型、真实额度窗口和会话来源。
-- [x] **贴边悬浮条**:主屏顶部/右侧可选,5h/7d 收起态、悬停详情、全屏自动隐藏,与托盘面板共享刷新。
+- [x] **贴边悬浮条**:主屏顶部/右侧可选,5h/7d 收起态、悬停详情,与托盘面板共享刷新。
 - [x] **Desktop 会话跳转**:Codex 精确打开 task;Claude 有 bridge id 时精确打开,否则复制标题并唤起客户端;CLI 不启动终端。
 - [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 便携版,中英 README 已完成。
 - [x] **公开发布**:MIT + GitHub 公开仓库 + v1.0.0 Release 已完成；后续再做干净 Windows 验证和社区收录。
