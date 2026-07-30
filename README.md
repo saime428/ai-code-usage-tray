@@ -38,7 +38,7 @@
 1. 打开 [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest)。
 2. 下载 `AI-Code-Usage-Tray-*-win-x64.exe`。
 3. 双击运行，无需安装；单击悬浮条或系统托盘图标打开完整面板。
-4. 右键悬浮条或托盘图标，可刷新、切换顶部/右侧、隐藏悬浮条或退出。
+4. 右键悬浮条或托盘图标，可刷新、启用开机自启、切换顶部/右侧、隐藏悬浮条或退出。
 
 > [!WARNING]
 > 当前便携版尚未进行 Windows 代码签名，SmartScreen 可能显示提醒。请只从本仓库的 Releases 下载，并核对 Release 中提供的 SHA-256。后续签名版本将按下方 [Code signing policy](#code-signing-policy) 发布。

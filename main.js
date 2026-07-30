@@ -36,6 +36,7 @@ const FLOATING_SIZE = {
 const FLOATING_COLLAPSE_MS = 300;
 const CLAUDE_OAUTH_REFRESH_MS = 5 * 60 * 1000;
 const DEFAULT_SETTINGS = { floatingEnabled: true, floatingPosition: 'top' };
+const LOGIN_ITEM_PATH = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
 let tray = null;
 let panelWin = null;
 let floatingWin = null;
@@ -584,6 +585,18 @@ function quickMenuTemplate(includePaths) {
   const items = [
     { label: '打开完整面板', click: () => togglePanel(includePaths ? 'tray' : settings.floatingPosition) },
     { label: '刷新', click: refreshUsage },
+    {
+      label: '开机自启',
+      type: 'checkbox',
+      checked:
+        app.isPackaged &&
+        app.getLoginItemSettings({ path: LOGIN_ITEM_PATH }).executableWillLaunchAtLogin,
+      enabled: app.isPackaged,
+      click: (item) => {
+        app.setLoginItemSettings({ openAtLogin: item.checked, path: LOGIN_ITEM_PATH });
+        updateTrayMenu();
+      },
+    },
     {
       label: '显示悬浮条',
       type: 'checkbox',
