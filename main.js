@@ -14,7 +14,6 @@ const {
 } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 const { collectUsage, DEFAULT_ROOT } = require('./lib/usage');
 const { collectCodexUsage, DEFAULT_CODEX_ROOT } = require('./lib/codex-usage');
 const { sessionTarget } = require('./lib/open-session');
@@ -44,8 +43,6 @@ let quitting = false;
 let panelAnchor = 'tray';
 let floatingExpanded = false;
 let floatingCollapseTimer = null;
-let fullscreenActive = false;
-let fullscreenWatcher = null;
 let settings = { ...DEFAULT_SETTINGS };
 let usageSnapshot = null;
 let refreshPromise = null;
@@ -405,7 +402,7 @@ function floatingBounds(expanded = floatingExpanded) {
 
 function updateFloatingVisibility() {
   if (!floatingWin || floatingWin.isDestroyed()) return;
-  if (settings.floatingEnabled && !fullscreenActive) floatingWin.showInactive();
+  if (settings.floatingEnabled) floatingWin.showInactive();
   else floatingWin.hide();
 }
 
@@ -645,77 +642,6 @@ function updateTrayMenu() {
   if (tray) tray.setContextMenu(Menu.buildFromTemplate(quickMenuTemplate(true)));
 }
 
-function startFullscreenWatcher() {
-  if (process.platform !== 'win32') return;
-  const script = String.raw`
-Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-public static class FullscreenProbe {
-  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
-  [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO {
-    public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags;
-  }
-  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] static extern IntPtr GetShellWindow();
-  [DllImport("user32.dll")] static extern IntPtr GetDesktopWindow();
-  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hWnd);
-  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-  [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
-  [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
-  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-  public static bool IsPrimaryFullscreen(int ownPid) {
-    var window = GetForegroundWindow();
-    if (window == IntPtr.Zero || window == GetShellWindow() || window == GetDesktopWindow() || IsIconic(window)) return false;
-    uint pid; GetWindowThreadProcessId(window, out pid);
-    if (pid == ownPid) return false;
-    RECT rect; if (!GetWindowRect(window, out rect)) return false;
-    var monitor = MonitorFromWindow(window, 2);
-    var info = new MONITORINFO(); info.cbSize = Marshal.SizeOf(info);
-    if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref info) || (info.dwFlags & 1) == 0) return false;
-    const int tolerance = 2;
-    return Math.Abs(rect.Left - info.rcMonitor.Left) <= tolerance
-      && Math.Abs(rect.Top - info.rcMonitor.Top) <= tolerance
-      && Math.Abs(rect.Right - info.rcMonitor.Right) <= tolerance
-      && Math.Abs(rect.Bottom - info.rcMonitor.Bottom) <= tolerance;
-  }
-}
-'@
-$last = $null
-while ($true) {
-  try { $next = [FullscreenProbe]::IsPrimaryFullscreen(${process.pid}) } catch { $next = $false }
-  if ($next -ne $last) {
-    if ($next) { [Console]::Out.WriteLine('1') } else { [Console]::Out.WriteLine('0') }
-    [Console]::Out.Flush()
-    $last = $next
-  }
-  Start-Sleep -Milliseconds 750
-}`;
-  fullscreenWatcher = spawn(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script],
-    { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] },
-  );
-  let buffer = '';
-  fullscreenWatcher.stdout.on('data', (chunk) => {
-    buffer += chunk.toString();
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop();
-    for (const line of lines) {
-      if (line !== '0' && line !== '1') continue;
-      fullscreenActive = line === '1';
-      updateFloatingVisibility();
-    }
-  });
-  const resetFullscreenState = () => {
-    fullscreenWatcher = null;
-    fullscreenActive = false;
-    updateFloatingVisibility();
-  };
-  fullscreenWatcher.once('error', resetFullscreenState);
-  fullscreenWatcher.once('exit', resetFullscreenState);
-}
-
 app.whenReady().then(() => {
   loadSettings();
   createPanelWindow();
@@ -727,7 +653,6 @@ app.whenReady().then(() => {
     if (floatingWin) floatingWin.setBounds(floatingBounds(), false);
     if (panelWin && panelWin.isVisible()) positionPanel(panelAnchor);
   });
-  startFullscreenWatcher();
   refreshUsage();
   setInterval(refreshUsage, 30_000);
 });
@@ -790,7 +715,6 @@ ipcMain.handle('open-session', async (event, session) => {
 
 app.on('before-quit', () => {
   quitting = true;
-  if (fullscreenWatcher) fullscreenWatcher.kill();
 });
 
 // tray app: closing the panel must not quit
