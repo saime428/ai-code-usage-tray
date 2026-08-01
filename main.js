@@ -39,7 +39,6 @@ let tray = null;
 let panelWin = null;
 let floatingWin = null;
 let quitting = false;
-let suppressPanelBlur = false;
 let panelAnchor = 'tray';
 let floatingExpanded = false;
 let floatingCollapseTimer = null;
@@ -374,9 +373,6 @@ function createPanelWindow() {
     },
   });
   panelWin.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  panelWin.on('blur', () => {
-    if (!suppressPanelBlur) panelWin.hide();
-  });
   panelWin.on('close', (event) => {
     if (!quitting) {
       event.preventDefault();
@@ -669,14 +665,9 @@ ipcMain.handle('claude-auth-status', (event) => {
   if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的账户请求');
   return claudeAuthStatus();
 });
-ipcMain.handle('claude-auth-connect', async (event) => {
+ipcMain.handle('claude-auth-connect', (event) => {
   if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的账户请求');
-  suppressPanelBlur = true;
-  try {
-    return await beginClaudeAccountConnection();
-  } finally {
-    suppressPanelBlur = false;
-  }
+  return beginClaudeAccountConnection();
 });
 ipcMain.handle('claude-auth-complete', async (event, code) => {
   if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的账户请求');
