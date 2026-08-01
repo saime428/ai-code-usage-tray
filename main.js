@@ -399,11 +399,17 @@ function floatingBounds(expanded = floatingExpanded) {
       };
 }
 
+function keepWindowOnTop(win) {
+  win.setAlwaysOnTop(false);
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.moveTop();
+}
+
 function updateFloatingVisibility() {
   if (!floatingWin || floatingWin.isDestroyed()) return;
   if (settings.floatingEnabled) {
     floatingWin.showInactive();
-    floatingWin.setAlwaysOnTop(true, 'screen-saver');
+    keepWindowOnTop(floatingWin);
   } else floatingWin.hide();
 }
 
@@ -417,11 +423,13 @@ function setFloatingExpanded(expanded, reduceMotion = false) {
     position: settings.floatingPosition,
     expanded,
   });
+  keepWindowOnTop(floatingWin);
   if (!expanded && !reduceMotion) {
     floatingCollapseTimer = setTimeout(() => {
       floatingCollapseTimer = null;
       if (floatingWin && !floatingWin.isDestroyed() && !floatingExpanded) {
         floatingWin.setBounds(floatingBounds(false), false);
+        keepWindowOnTop(floatingWin);
       }
     }, FLOATING_COLLAPSE_MS);
   }
@@ -492,7 +500,7 @@ function togglePanel(anchor = 'tray') {
   setFloatingExpanded(false);
   positionPanel(anchor);
   panelWin.show();
-  panelWin.setAlwaysOnTop(true, 'screen-saver');
+  keepWindowOnTop(panelWin);
   panelWin.focus();
 }
 
@@ -639,7 +647,10 @@ app.whenReady().then(() => {
   updateTrayMenu();
   tray.on('click', () => togglePanel('tray'));
   screen.on('display-metrics-changed', () => {
-    if (floatingWin) floatingWin.setBounds(floatingBounds(), false);
+    if (floatingWin) {
+      floatingWin.setBounds(floatingBounds(), false);
+      keepWindowOnTop(floatingWin);
+    }
     if (panelWin && panelWin.isVisible()) positionPanel(panelAnchor);
   });
   refreshUsage();
