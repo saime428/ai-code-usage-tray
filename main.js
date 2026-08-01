@@ -401,8 +401,10 @@ function floatingBounds(expanded = floatingExpanded) {
 
 function updateFloatingVisibility() {
   if (!floatingWin || floatingWin.isDestroyed()) return;
-  if (settings.floatingEnabled) floatingWin.showInactive();
-  else floatingWin.hide();
+  if (settings.floatingEnabled) {
+    floatingWin.showInactive();
+    floatingWin.setAlwaysOnTop(true, 'screen-saver');
+  } else floatingWin.hide();
 }
 
 function setFloatingExpanded(expanded, reduceMotion = false) {
@@ -443,7 +445,6 @@ function createFloatingWindow() {
       spellcheck: false,
     },
   });
-  floatingWin.setAlwaysOnTop(true, 'floating');
   floatingWin.loadFile(path.join(__dirname, 'renderer', 'floating.html'));
   floatingWin.webContents.once('did-finish-load', () => {
     floatingWin.webContents.send('floating-state', {
@@ -491,6 +492,7 @@ function togglePanel(anchor = 'tray') {
   setFloatingExpanded(false);
   positionPanel(anchor);
   panelWin.show();
+  panelWin.setAlwaysOnTop(true, 'screen-saver');
   panelWin.focus();
 }
 
