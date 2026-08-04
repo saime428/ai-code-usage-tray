@@ -500,10 +500,18 @@ function floatingBounds(expanded = floatingExpanded) {
       };
 }
 
+function keepWindowOnTop(win) {
+  win.setAlwaysOnTop(false);
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.moveTop();
+}
+
 function updateFloatingVisibility() {
   if (!floatingWin || floatingWin.isDestroyed()) return;
-  if (settings.floatingEnabled) floatingWin.showInactive();
-  else floatingWin.hide();
+  if (settings.floatingEnabled) {
+    floatingWin.showInactive();
+    keepWindowOnTop(floatingWin);
+  } else floatingWin.hide();
 }
 
 function setFloatingExpanded(expanded, reduceMotion = false) {
@@ -516,11 +524,13 @@ function setFloatingExpanded(expanded, reduceMotion = false) {
     position: settings.floatingPosition,
     expanded,
   });
+  keepWindowOnTop(floatingWin);
   if (!expanded && !reduceMotion) {
     floatingCollapseTimer = setTimeout(() => {
       floatingCollapseTimer = null;
       if (floatingWin && !floatingWin.isDestroyed() && !floatingExpanded) {
         floatingWin.setBounds(floatingBounds(false), false);
+        keepWindowOnTop(floatingWin);
       }
     }, FLOATING_COLLAPSE_MS);
   }
@@ -544,7 +554,6 @@ function createFloatingWindow() {
       spellcheck: false,
     },
   });
-  floatingWin.setAlwaysOnTop(true, 'floating');
   floatingWin.loadFile(path.join(__dirname, 'renderer', 'floating.html'));
   floatingWin.webContents.once('did-finish-load', () => {
     floatingWin.webContents.send('floating-state', {
@@ -592,6 +601,7 @@ function togglePanel(anchor = 'tray') {
   setFloatingExpanded(false);
   positionPanel(anchor);
   panelWin.show();
+  keepWindowOnTop(panelWin);
   panelWin.focus();
 }
 
@@ -754,7 +764,10 @@ app.whenReady().then(() => {
   updateTrayMenu();
   tray.on('click', () => togglePanel('tray'));
   screen.on('display-metrics-changed', () => {
-    if (floatingWin) floatingWin.setBounds(floatingBounds(), false);
+    if (floatingWin) {
+      floatingWin.setBounds(floatingBounds(), false);
+      keepWindowOnTop(floatingWin);
+    }
     if (panelWin && panelWin.isVisible()) positionPanel(panelAnchor);
   });
   refreshUsage();
