@@ -21,6 +21,8 @@
 
 > [!NOTE]
 > 面板中的金额是按官方标准 API 价格计算的**等价价值**，用于观察消耗速度；Claude / Codex 订阅用户不会按该金额再次扣费。
+>
+> Claude Desktop 的普通 **Home 聊天只能识别会话元数据和额度百分比**。Claude 没有在本机提供精确 token 明细，因此这部分无法计算金额；金额只统计存在本地 transcript 的 Claude Code / Cowork 会话。连接 Claude 账户也只会提高额度与重置时间的准确度，不会补齐 Home 聊天 token。
 
 ## 亮点
 
@@ -49,7 +51,8 @@
 | --- | --- | --- |
 | Claude Code | `~/.claude/projects/**/*.jsonl` | token、模型、项目、会话活动 |
 | Claude Desktop | `%APPDATA%/Claude/plan-usage-history.json` | 5h / 7d 百分比 |
-| Claude Desktop | `%APPDATA%/Claude/claude-code-sessions/**/*.json` | 标题、客户端类型、最近活动 |
+| Claude Desktop | `%APPDATA%/Claude/claude-code-sessions/**/*.json` | Claude Code / Cowork 标题、客户端类型、最近活动 |
+| Claude Desktop Home | `%APPDATA%/Claude/IndexedDB/` | 普通聊天的标题、模型、消息数、最近活动（无 token 明细） |
 | Claude 账户（可选） | Anthropic OAuth 用量接口 | 官方百分比与精确重置时间 |
 | Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | token、额度窗口、模型、会话活动 |
 
@@ -137,6 +140,7 @@ git status --short
 - 尚未接入自动更新。
 - 当前便携版尚未进行代码签名；SignPath Foundation 申请和自动签名接入正在进行。
 - Claude OAuth 可能受 Anthropic 限流或当前网络出口影响；本地推算不受影响。
+- Claude Desktop 普通 Home 聊天没有可读取的精确 token 明细，只能显示会话状态和额度百分比，无法计算金额。
 
 ## 贡献
 
@@ -151,7 +155,7 @@ npm test
 <a id="english"></a>
 ## English
 
-**AI Code Usage Tray** is a local-first Windows tray monitor for Claude Code/Desktop and Codex CLI/Desktop. It shows daily tokens, API-equivalent value, available 5-hour / 7-day rate-limit windows, reset times, and recent session activity without uploading transcript contents or requiring API keys.
+**AI Code Usage Tray** is a local-first Windows tray monitor for Claude Code/Desktop and Codex CLI/Desktop. It shows daily tokens, API-equivalent value, available 5-hour / 7-day rate-limit windows, reset times, and recent session activity without uploading transcript contents or requiring API keys. Regular Claude Desktop Home chats expose only local session metadata and quota percentages, not exact token details, so their API-equivalent value cannot be calculated.
 
 Download the portable x64 executable from [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest), or clone the repository and run `npm ci`, `npm test`, and `npm start`. See the [Privacy Policy](PRIVACY.md) and [Code signing policy](#code-signing-policy).
 
