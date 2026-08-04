@@ -16,12 +16,15 @@ const rows = Object.entries(u.byModel).map(([model, b]) => ({
   cacheWrite: b.cacheWrite,
   'est.$': +b.costUSD.toFixed(4),
 }));
-if (rows.length === 0) {
+if (u.costCoverage === 'unavailable') {
+  console.log('Claude Desktop quota is available, but local token detail is unavailable; cost cannot be calculated.');
+} else if (rows.length === 0) {
   console.log('No usage recorded today.');
 } else {
   console.table(rows);
+  const incomplete = u.costCoverage === 'partial' || u.unknownModels.length > 0;
   console.log(
-    `TOTAL  in=${u.totals.input}  out=${u.totals.output}  cacheR=${u.totals.cacheRead}  cacheW=${u.totals.cacheWrite}  ≈$${u.costUSD.toFixed(2)} (API-equivalent)`,
+    `TOTAL  in=${u.totals.input}  out=${u.totals.output}  cacheR=${u.totals.cacheRead}  cacheW=${u.totals.cacheWrite}  ≈$${u.costUSD.toFixed(2)}${incomplete ? '+' : ''} (API-equivalent)`,
   );
 }
 if (u.unknownModels.length) {

@@ -14,6 +14,7 @@ const {
 } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { collectUsage, DEFAULT_ROOT } = require('./lib/usage');
 const { collectCodexUsage, DEFAULT_CODEX_ROOT } = require('./lib/codex-usage');
 const { sessionTarget } = require('./lib/open-session');
@@ -57,6 +58,26 @@ if (!app.requestSingleInstanceLock()) app.quit();
 
 const fmtTokens = (n) =>
   n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n);
+
+function isClaudeDesktopRunning() {
+  if (process.platform !== 'win32') return false;
+  try {
+    const output = execFileSync(
+      'tasklist.exe',
+      ['/FI', 'IMAGENAME eq claude.exe', '/FO', 'CSV', '/NH'],
+      { encoding: 'utf8', timeout: 2000, windowsHide: true },
+    );
+    return /\"claude\.exe\"/i.test(output);
+  } catch {
+    return false;
+  }
+}
+
+function costText(usage) {
+  if (usage.costCoverage === 'unavailable') return '\u91d1\u989d\u4e0d\u53ef\u7528';
+  const incomplete = usage.costCoverage === 'partial' || (usage.unknownModels || []).length > 0;
+  return `\u2248$${usage.costUSD.toFixed(2)}${incomplete ? '+' : ''}`;
+}
 
 function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -288,6 +309,7 @@ function emptyUsage(error, collectedAt) {
     byModel: {},
     totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, requests: 0 },
     costUSD: 0,
+    costCoverage: 'unavailable',
     unknownModels: [],
     sessions: [],
     rateLimits: null,
@@ -323,6 +345,7 @@ async function collectAllUsage() {
   };
   const oauthRateLimits = await getClaudeOAuthRateLimits();
   if (oauthRateLimits) snapshot.claude.rateLimits = oauthRateLimits;
+  snapshot.claude.appRunning = isClaudeDesktopRunning();
   snapshot.claude.auth = claudeAuthStatus();
   return snapshot;
 }
@@ -514,10 +537,14 @@ function updateTray(snapshot) {
   }
   attentionSessions = nextAttention;
   tray.setImage(trayIcon(attention.length ? 'attention' : waiting ? 'waiting' : working ? 'working' : 'idle'));
+  const claudeActive = claude.sessions.some((session) =>
+    ['working', 'waiting', 'attention'].includes(session.state),
+  );
   const states = [
-    attention.length && `${attention.length} 个需处理`,
-    working && `${working} 个工作中`,
-    waiting && `${waiting} 个等你`,
+    attention.length && `${attention.length} \u4e2a\u9700\u5904\u7406`,
+    working && `${working} \u4e2a\u5de5\u4f5c\u4e2d`,
+    waiting && `${waiting} \u4e2a\u7b49\u4f60`,
+    claude.appRunning && !claudeActive && 'Claude Desktop \u5df2\u6253\u5f00',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -525,7 +552,7 @@ function updateTray(snapshot) {
   const codexWindows = (codex.rateLimits && codex.rateLimits.windows) || [];
   const windowText = (label, value) => (value ? ` · ${label} ${Math.round(value.usedPercentage)}%` : '');
   tray.setToolTip(
-    `Claude: ${fmtTokens(claude.totals.output)} out · ≈$${claude.costUSD.toFixed(2)}` +
+    `Claude: ${fmtTokens(claude.totals.output)} out \u00b7 ${costText(claude)}` +
       windowText('5h', claudeWindows && claudeWindows.fiveHour) +
       windowText('7d', claudeWindows && claudeWindows.sevenDay) +
       `\nCodex: ${fmtTokens(codex.totals.output)} out · ≈$${codex.costUSD.toFixed(2)}` +

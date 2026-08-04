@@ -218,6 +218,11 @@
     const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
     const windowLabel = (minutes) =>
       minutes % 1440 === 0 ? minutes / 1440 + 'd' : minutes % 60 === 0 ? minutes / 60 + 'h' : minutes + 'm';
+    const costText = (usage, isClaude, unknown) => {
+      if (isClaude && usage.costCoverage === 'unavailable') return '—';
+      const incomplete = (isClaude && usage.costCoverage === 'partial') || unknown.size > 0;
+      return `≈$${usage.costUSD.toFixed(2)}${incomplete ? '+' : ''}`;
+    };
     let selected = 'claude';
     let latest = null;
     let visibleSessions = [];
@@ -231,10 +236,12 @@
       const usage = latest[selected];
       const isClaude = selected === 'claude';
       const unknown = new Set(usage.unknownModels || []);
+      const costUnavailable = isClaude && usage.costCoverage === 'unavailable';
       document.getElementById('date').textContent = usage.date;
-      document.getElementById('cost').textContent = '≈$' + usage.costUSD.toFixed(2) + (unknown.size ? '+' : '');
-      document.getElementById('totals').textContent =
-        `in ${fmt(usage.totals.input)} · out ${fmt(usage.totals.output)} · cache读 ${fmt(usage.totals.cacheRead)} · ${isClaude ? 'cache写 ' + fmt(usage.totals.cacheWrite) : '推理 ' + fmt(usage.totals.reasoning)}`;
+      document.getElementById('cost').textContent = costText(usage, isClaude, unknown);
+      document.getElementById('totals').textContent = costUnavailable
+        ? 'Claude Desktop 当前没有可读取的 token 明细 · 额度百分比仍会更新'
+        : `in ${fmt(usage.totals.input)} · out ${fmt(usage.totals.output)} · cache读 ${fmt(usage.totals.cacheRead)} · ${isClaude ? 'cache写 ' + fmt(usage.totals.cacheWrite) : '推理 ' + fmt(usage.totals.reasoning)}`;
 
       const limits = isClaude
         ? [['5h', usage.rateLimits && usage.rateLimits.fiveHour], ['7d', usage.rateLimits && usage.rateLimits.sevenDay]].filter(([, value]) => value)
@@ -292,7 +299,9 @@
       const empty = document.getElementById('empty');
       table.hidden = models.length === 0;
       empty.hidden = models.length !== 0;
-      empty.textContent = '今天还没有 ' + (isClaude ? 'Claude' : 'Codex') + ' 用量记录。';
+      empty.textContent = costUnavailable
+        ? 'Claude Desktop 未提供本地 token 明细。'
+        : '今天还没有 ' + (isClaude ? 'Claude' : 'Codex') + ' 用量记录。';
       document.getElementById('model-head').innerHTML = isClaude
         ? '<th>模型</th><th>请求</th><th>In</th><th>Out</th><th>Cache读</th><th>$</th>'
         : '<th>模型</th><th>轮次</th><th>In</th><th>Out</th><th>Cache读</th><th>$</th>';
@@ -303,6 +312,9 @@
       </tr>`).join('');
 
       visibleSessions = usage.sessions.slice(0, isClaude ? (claudeAuth.awaitingCode ? 3 : 5) : limits.length ? 6 : 8);
+      const sessionEmpty = isClaude && usage.appRunning
+        ? 'Claude Desktop 已打开，但当前聊天没有本地 transcript。'
+        : '最近 24 小时没有会话。';
       document.getElementById('sessions').innerHTML = visibleSessions.map((session, index) => {
         const mins = Math.max(0, Math.round((Date.now() - session.mtime) / 60000));
         const ago = mins < 60 ? `${mins}m` : `${Math.round(mins / 60)}h`;
@@ -318,10 +330,13 @@
               <svg class="open-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3h7v7M13 3 5 11M11 9v4H3V5h4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button><div class="session-error" id="session-error-${index}" role="alert"></div></div>`
           : `<div class="session">${content}</div>`;
-      }).join('') || '<div class="empty">最近 24 小时没有会话。</div>';
+      }).join('') || `<div class="empty">${sessionEmpty}</div>`;
 
       const provider = isClaude ? 'Anthropic' : 'OpenAI';
       const warnings = [
+        costUnavailable ? 'Claude Desktop 当前只提供额度百分比，金额无法计算' : '',
+        isClaude && usage.costCoverage === 'partial' ? '金额仅统计本机 Claude Code/Cowork，可能不完整' : '',
+        isClaude && usage.appRunning ? 'Claude Desktop 当前正在运行' : '',
         unknown.size ? `${unknown.size} 个模型价格不可用，合计金额不完整` : '',
         usage.dataStatus?.state !== 'ok' ? usage.dataStatus.message : '',
         usage.rateLimits?.stale ? '额度数据已超过 15 分钟未更新' : '',
