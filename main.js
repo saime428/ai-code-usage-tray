@@ -14,7 +14,7 @@ const {
 } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 const { collectUsage, DEFAULT_ROOT } = require('./lib/usage');
 const { collectCodexUsage, DEFAULT_CODEX_ROOT } = require('./lib/codex-usage');
 const { sessionTarget } = require('./lib/open-session');
@@ -25,6 +25,26 @@ const {
   refreshAccessToken,
   fetchUsage: fetchClaudeOAuthUsage,
 } = require('./lib/claude-oauth');
+const {
+  DEFAULT_INDEXED_DB_ROOT,
+  cacheSignature,
+  createSnapshot,
+  removeSnapshot,
+  desktopConversationSession,
+  runProbe: runClaudeDesktopCacheProbe,
+} = require('./lib/claude-desktop-cache');
+
+const probeProfile = process.env.CLAUDE_USAGE_CACHE_PROBE;
+if (probeProfile) {
+  runClaudeDesktopCacheProbe(probeProfile)
+    .then((conversation) => process.stdout.write(JSON.stringify(conversation)))
+    .then(() => app.quit())
+    .catch((error) => {
+      process.stderr.write(String(error.stack || error) + '\n');
+      app.exit(1);
+    });
+  return;
+}
 
 const systemFetch = (...args) => net.fetch(...args);
 
@@ -53,6 +73,7 @@ let claudeLoginPromise = null;
 let claudeOAuthPromise = null;
 let claudeOAuthCache = null;
 let claudeAuthError = null;
+let claudeDesktopCache = { signature: null, conversation: null };
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -70,6 +91,52 @@ function isClaudeDesktopRunning() {
     return /\"claude\.exe\"/i.test(output);
   } catch {
     return false;
+  }
+}
+
+function runDesktopCacheProbe(snapshotRoot) {
+  return new Promise((resolve, reject) => {
+    const env = { ...process.env, CLAUDE_USAGE_CACHE_PROBE: snapshotRoot };
+    delete env.ELECTRON_RUN_AS_NODE;
+    execFile(
+      process.execPath,
+      app.isPackaged ? [] : [app.getAppPath()],
+      { env, encoding: 'utf8', timeout: 15_000, windowsHide: true, maxBuffer: 1024 * 1024 },
+      (error, stdout) => {
+        if (error) reject(error);
+        else {
+          try {
+            resolve(JSON.parse(stdout.trim() || 'null'));
+          } catch (parseError) {
+            reject(parseError);
+          }
+        }
+      },
+    );
+  });
+}
+
+function cleanupDesktopSnapshot(snapshotRoot, tempRoot, retries = 15) {
+  if (removeSnapshot(snapshotRoot, tempRoot) || retries <= 0) return;
+  const timer = setTimeout(() => cleanupDesktopSnapshot(snapshotRoot, tempRoot, retries - 1), 1000);
+  timer.unref();
+}
+
+async function readClaudeDesktopConversation() {
+  const signature = cacheSignature(DEFAULT_INDEXED_DB_ROOT);
+  if (!signature) return null;
+  if (signature === claudeDesktopCache.signature) return claudeDesktopCache.conversation;
+  const tempRoot = app.getPath('temp');
+  let snapshotRoot;
+  try {
+    snapshotRoot = createSnapshot(DEFAULT_INDEXED_DB_ROOT, tempRoot);
+    const conversation = await runDesktopCacheProbe(snapshotRoot);
+    claudeDesktopCache = { signature, conversation };
+    return conversation;
+  } catch {
+    return claudeDesktopCache.conversation;
+  } finally {
+    cleanupDesktopSnapshot(snapshotRoot, tempRoot);
   }
 }
 
@@ -343,9 +410,19 @@ async function collectAllUsage() {
     claude: collectProvider('claude', collectUsage, collectedAt),
     codex: collectProvider('codex', collectCodexUsage, collectedAt),
   };
-  const oauthRateLimits = await getClaudeOAuthRateLimits();
+  const appRunning = isClaudeDesktopRunning();
+  const [oauthRateLimits, desktopConversation] = await Promise.all([
+    getClaudeOAuthRateLimits(),
+    appRunning ? readClaudeDesktopConversation() : null,
+  ]);
   if (oauthRateLimits) snapshot.claude.rateLimits = oauthRateLimits;
-  snapshot.claude.appRunning = isClaudeDesktopRunning();
+  const desktopSession = desktopConversationSession(desktopConversation, collectedAt);
+  if (desktopSession && !snapshot.claude.sessions.some((session) => session.sessionId === desktopSession.sessionId)) {
+    snapshot.claude.sessions.push(desktopSession);
+    snapshot.claude.sessions.sort((a, b) => b.mtime - a.mtime);
+  }
+  snapshot.claude.appRunning = appRunning;
+  snapshot.claude.desktopConversation = desktopConversation;
   snapshot.claude.auth = claudeAuthStatus();
   return snapshot;
 }

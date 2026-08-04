@@ -181,7 +181,8 @@
       if (!usage.rateLimits) return '额度数据尚不可用';
       if (usage.rateLimits.stale) return '额度数据已超过 15 分钟未更新';
       if (provider === 'claude' && usage.appRunning && usage.costCoverage === 'unavailable') {
-        return 'Claude Desktop 已打开 · token 明细不可用';
+        const detected = usage.sessions.some((session) => session.source === 'desktop-cache');
+        return detected ? '已识别 Desktop 当前聊天 · token 明细不可用' : 'Claude Desktop 已打开 · token 明细不可用';
       }
       if (provider === 'claude' && usage.appRunning) return 'Claude Desktop 已打开';
       const updatedAt = usage.rateLimits.updatedAt;

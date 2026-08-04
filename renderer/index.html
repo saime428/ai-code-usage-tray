@@ -237,10 +237,13 @@
       const isClaude = selected === 'claude';
       const unknown = new Set(usage.unknownModels || []);
       const costUnavailable = isClaude && usage.costCoverage === 'unavailable';
+      const desktopChatDetected = isClaude && usage.sessions.some((session) => session.source === 'desktop-cache');
       document.getElementById('date').textContent = usage.date;
       document.getElementById('cost').textContent = costText(usage, isClaude, unknown);
       document.getElementById('totals').textContent = costUnavailable
-        ? 'Claude Desktop 当前没有可读取的 token 明细 · 额度百分比仍会更新'
+        ? desktopChatDetected
+          ? '已识别 Claude Desktop 当前聊天 · Desktop 未提供 token 明细'
+          : 'Claude Desktop 当前没有可读取的 token 明细 · 额度百分比仍会更新'
         : `in ${fmt(usage.totals.input)} · out ${fmt(usage.totals.output)} · cache读 ${fmt(usage.totals.cacheRead)} · ${isClaude ? 'cache写 ' + fmt(usage.totals.cacheWrite) : '推理 ' + fmt(usage.totals.reasoning)}`;
 
       const limits = isClaude
@@ -300,7 +303,9 @@
       table.hidden = models.length === 0;
       empty.hidden = models.length !== 0;
       empty.textContent = costUnavailable
-        ? 'Claude Desktop 未提供本地 token 明细。'
+        ? desktopChatDetected
+          ? '已识别当前 Desktop 聊天，但 Claude 没有保存 token 明细。'
+          : 'Claude Desktop 未提供本地 token 明细。'
         : '今天还没有 ' + (isClaude ? 'Claude' : 'Codex') + ' 用量记录。';
       document.getElementById('model-head').innerHTML = isClaude
         ? '<th>模型</th><th>请求</th><th>In</th><th>Out</th><th>Cache读</th><th>$</th>'
@@ -334,7 +339,11 @@
 
       const provider = isClaude ? 'Anthropic' : 'OpenAI';
       const warnings = [
-        costUnavailable ? 'Claude Desktop 当前只提供额度百分比，金额无法计算' : '',
+        costUnavailable
+          ? desktopChatDetected
+            ? '已识别当前 Desktop 聊天，但 Claude 未提供 token 明细，金额无法计算'
+            : 'Claude Desktop 当前只提供额度百分比，金额无法计算'
+          : '',
         isClaude && usage.costCoverage === 'partial' ? '金额仅统计本机 Claude Code/Cowork，可能不完整' : '',
         isClaude && usage.appRunning ? 'Claude Desktop 当前正在运行' : '',
         unknown.size ? `${unknown.size} 个模型价格不可用，合计金额不完整` : '',
