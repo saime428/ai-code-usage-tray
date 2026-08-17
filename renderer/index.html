@@ -190,7 +190,6 @@
     .session-button:disabled { cursor: wait; opacity: .6; }
     .dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #3a3a42; }
     .dot.working { background: var(--ok); }
-    .dot.waiting { background: var(--warn); }
     .dot.attention { background: var(--danger); }
     .session .name { min-width: 0; overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
     .session .ago { flex: none; color: var(--muted); font-size: 11px; }
@@ -249,7 +248,7 @@
       return n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
     };
     const shortModel = (model) => model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
-    const stateLabel = { working: '工作中', waiting: '等你', attention: '需处理', idle: '空闲' };
+    const stateLabel = { working: '工作中', attention: '需处理', idle: '空闲' };
     const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
     const windowLabel = (minutes) =>
       minutes % 1440 === 0 ? minutes / 1440 + 'd' : minutes % 60 === 0 ? minutes / 60 + 'h' : minutes + 'm';

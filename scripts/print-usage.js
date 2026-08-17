@@ -42,7 +42,6 @@ for (const s of u.sessions.slice(0, 10)) {
   const mins = Math.round((Date.now() - s.mtime) / 60000);
   const state = {
     working: ['●', 'working'],
-    waiting: ['◐', 'waiting'],
     attention: ['!', 'attention'],
     idle: ['○', 'idle'],
   }[s.state] || ['○', 'idle'];

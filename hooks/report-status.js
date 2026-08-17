@@ -17,9 +17,9 @@ const SAFE_SESSION_ID = /^[a-zA-Z0-9._-]{1,200}$/;
 
 const STATE_BY_EVENT = {
   UserPromptSubmit: 'working', // user sent a prompt -> Claude is busy
-  Stop: 'waiting', // turn finished -> waiting for the user
-  Notification: 'attention', // permission ask / idle reminder -> needs the user
-  SessionStart: 'waiting',
+  Stop: 'idle', // turn finished
+  Notification: 'attention', // permission ask -> needs the user
+  SessionStart: 'idle',
   SessionEnd: 'ended',
 };
 
@@ -30,7 +30,7 @@ process.stdin.on('end', () => {
     const evt = JSON.parse(raw);
     if (
       evt.hook_event_name === 'Notification' &&
-      !['permission_prompt', 'idle_prompt'].includes(evt.notification_type)
+      evt.notification_type !== 'permission_prompt'
     ) {
       process.exit(0);
     }

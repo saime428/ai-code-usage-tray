@@ -620,7 +620,6 @@ function trayIcon(state = 'idle') {
   const [b, g, r] =
     {
       working: [0x6e, 0xaf, 0x4c],
-      waiting: [0x41, 0xa4, 0xd9],
       attention: [0x58, 0x58, 0xe4],
       idle: [0x57, 0x77, 0xd9],
     }[state] || [0x57, 0x77, 0xd9];
@@ -797,7 +796,6 @@ function updateTray(snapshot) {
   if (!tray) return;
   const { claude, codex } = snapshot;
   const working = [...claude.sessions, ...codex.sessions].filter((session) => session.state === 'working').length;
-  const waiting = claude.sessions.filter((session) => session.state === 'waiting').length;
   const attention = claude.sessions.filter((session) => session.state === 'attention');
   const nextAttention = new Set(attention.map((session) => session.sessionId));
   if (Notification.isSupported()) {
@@ -811,14 +809,13 @@ function updateTray(snapshot) {
     }
   }
   attentionSessions = nextAttention;
-  tray.setImage(trayIcon(attention.length ? 'attention' : waiting ? 'waiting' : working ? 'working' : 'idle'));
+  tray.setImage(trayIcon(attention.length ? 'attention' : working ? 'working' : 'idle'));
   const claudeActive = claude.sessions.some((session) =>
-    ['working', 'waiting', 'attention'].includes(session.state),
+    ['working', 'attention'].includes(session.state),
   );
   const states = [
     attention.length && `${attention.length} \u4e2a\u9700\u5904\u7406`,
     working && `${working} \u4e2a\u5de5\u4f5c\u4e2d`,
-    waiting && `${waiting} \u4e2a\u7b49\u4f60`,
     claude.appRunning && !claudeActive && 'Claude Desktop \u5df2\u6253\u5f00',
   ]
     .filter(Boolean)
