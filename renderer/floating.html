@@ -130,6 +130,7 @@
     body.position-right .compact { top: 41px; left: 268px; width: 54px; height: 242px; flex-direction: column; gap: 14px; padding: 10px 5px; }
     body.expanded.position-top #surface,
     body.expanded.position-right #surface { clip-path: inset(0 round 12px); transition: clip-path 400ms cubic-bezier(.23, 1, .32, 1), border-color 180ms ease, background-color 180ms ease; }
+    body.expanded.position-right #surface { height: 364px; }
     body.position-right .compact-provider { width: 100%; flex-direction: column; gap: 5px; }
     body.position-right .compact-provider + .compact-provider { padding: 14px 0 0; border-top: 1px solid #303038; border-left: 0; }
     body.position-right .metrics { flex-direction: column; gap: 2px; align-items: center; }
@@ -169,6 +170,7 @@
         ? [
             ['5h', usage.rateLimits && usage.rateLimits.fiveHour],
             ['7d', usage.rateLimits && usage.rateLimits.sevenDay],
+            ['Fable', usage.rateLimits && usage.rateLimits.sevenDayFable],
           ].filter(([, value]) => value)
         : [
             ['5h', usage.rateLimits && usage.rateLimits.windows.find((value) => value.windowMinutes === 300)],

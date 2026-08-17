@@ -247,7 +247,11 @@
         : `in ${fmt(usage.totals.input)} · out ${fmt(usage.totals.output)} · cache读 ${fmt(usage.totals.cacheRead)} · ${isClaude ? 'cache写 ' + fmt(usage.totals.cacheWrite) : '推理 ' + fmt(usage.totals.reasoning)}`;
 
       const limits = isClaude
-        ? [['5h', usage.rateLimits && usage.rateLimits.fiveHour], ['7d', usage.rateLimits && usage.rateLimits.sevenDay]].filter(([, value]) => value)
+        ? [
+            ['5h', usage.rateLimits && usage.rateLimits.fiveHour],
+            ['7d', usage.rateLimits && usage.rateLimits.sevenDay],
+            ['Fable', usage.rateLimits && usage.rateLimits.sevenDayFable],
+          ].filter(([, value]) => value)
         : ((usage.rateLimits && usage.rateLimits.windows) || []).map((value) => [windowLabel(value.windowMinutes), value]);
       const limitsEl = document.getElementById('limits');
       limitsEl.hidden = limits.length === 0;
@@ -276,7 +280,7 @@
           ? 'Claude 账户已连接'
           : awaitingCode ? '完成 Claude 连接' : '连接 Claude 账户';
         document.getElementById('account-detail').textContent = connected
-          ? claudeAuth.error || '官方额度会提供准确的 5h / 7d 重置时间'
+          ? claudeAuth.error || '官方额度会提供准确的 5h / 7d / Fable 重置时间'
           : awaitingCode
             ? '授权后，把浏览器页面显示的登录码粘贴到下面'
             : '浏览器授权；凭证仅由 Windows 加密保存在本机';

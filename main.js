@@ -51,7 +51,7 @@ const systemFetch = (...args) => net.fetch(...args);
 const PANEL = { width: 380, height: 544 };
 const FLOATING_SIZE = {
   top: { collapsed: [360, 42], expanded: [440, 224] },
-  right: { collapsed: [58, 246], expanded: [326, 328] },
+  right: { collapsed: [58, 246], expanded: [326, 368] },
 };
 const FLOATING_COLLAPSE_MS = 300;
 const CLAUDE_OAUTH_REFRESH_MS = 5 * 60 * 1000;
@@ -642,6 +642,7 @@ function updateTray(snapshot) {
     `Claude: ${fmtTokens(claude.totals.output)} out \u00b7 ${costText(claude)}` +
       windowText('5h', claudeWindows && claudeWindows.fiveHour) +
       windowText('7d', claudeWindows && claudeWindows.sevenDay) +
+      windowText('Fable', claudeWindows && claudeWindows.sevenDayFable) +
       `\nCodex: ${fmtTokens(codex.totals.output)} out · ≈$${codex.costUSD.toFixed(2)}` +
       windowText('5h', codexWindows.find((value) => value.windowMinutes === 300)) +
       windowText('7d', codexWindows.find((value) => value.windowMinutes === 10080)) +
