@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getUsage: () => ipcRenderer.invoke('usage'),
-  setUsageRange: (rangeDays) => ipcRenderer.invoke('usage-range', rangeDays),
+  setUsageRange: (provider, rangeDays) => ipcRenderer.invoke('usage-range', provider, rangeDays),
   clearAccountLedger: () => ipcRenderer.invoke('account-ledger-clear'),
   onUsage: (callback) => {
     const listener = (_event, usage) => callback(usage);

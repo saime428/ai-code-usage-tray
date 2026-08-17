@@ -74,7 +74,7 @@ if (process.env.AI_CODE_USAGE_WORKER_SMOKE === '1') {
     process.stderr.write(`WORKER_ERROR ${String(error.stack || error)}\n`);
     app.exit(1);
   });
-  worker.postMessage({ id: 1, rangeDays: 1, now: Date.now() });
+  worker.postMessage({ id: 1, ranges: { claude: 1, codex: 1 }, now: Date.now() });
   return;
 }
 
@@ -87,7 +87,12 @@ const FLOATING_SIZE = {
 };
 const FLOATING_COLLAPSE_MS = 300;
 const CLAUDE_OAUTH_REFRESH_MS = 5 * 60 * 1000;
-const DEFAULT_SETTINGS = { floatingEnabled: true, floatingPosition: 'top', rangeDays: 1 };
+const DEFAULT_SETTINGS = {
+  floatingEnabled: true,
+  floatingPosition: 'top',
+  claudeRangeDays: 1,
+  codexRangeDays: 1,
+};
 const LOGIN_ITEM_PATH = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
 let tray = null;
 let panelWin = null;
@@ -198,7 +203,9 @@ function loadSettings() {
     const saved = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
     settings.floatingEnabled = saved.floatingEnabled !== false;
     settings.floatingPosition = saved.floatingPosition === 'right' ? 'right' : 'top';
-    settings.rangeDays = normalizeRangeDays(saved.rangeDays);
+    const legacyRangeDays = normalizeRangeDays(saved.rangeDays);
+    settings.claudeRangeDays = normalizeRangeDays(saved.claudeRangeDays, legacyRangeDays);
+    settings.codexRangeDays = normalizeRangeDays(saved.codexRangeDays, legacyRangeDays);
   } catch {
     settings = { ...DEFAULT_SETTINGS };
   }
@@ -298,11 +305,11 @@ function ensureUsageWorker() {
   return worker;
 }
 
-function collectLocalUsage(rangeDays, now) {
+function collectLocalUsage(ranges, now) {
   const id = ++usageWorkerRequestId;
   return new Promise((resolve, reject) => {
     usageWorkerRequests.set(id, { resolve, reject });
-    ensureUsageWorker().postMessage({ id, rangeDays, now });
+    ensureUsageWorker().postMessage({ id, ranges, now });
   });
 }
 
@@ -507,7 +514,7 @@ async function getClaudeOAuthRateLimits(force = false) {
   return claudeOAuthPromise;
 }
 
-function emptyUsage(error, collectedAt, rangeDays = settings.rangeDays) {
+function emptyUsage(error, collectedAt, rangeDays = 1) {
   const range = rangeBounds(new Date(collectedAt), rangeDays);
   return {
     date: range.date,
@@ -549,7 +556,10 @@ function collectedProvider(name, value, error, collectedAt, rangeDays) {
 
 async function collectAllUsage() {
   const collectedAt = Date.now();
-  const rangeDays = settings.rangeDays;
+  const ranges = {
+    claude: settings.claudeRangeDays,
+    codex: settings.codexRangeDays,
+  };
   const identitiesBefore = detectIdentities();
   const appRunning = isClaudeDesktopRunning();
   const oauthPromise = getClaudeOAuthRateLimits();
@@ -557,7 +567,7 @@ async function collectAllUsage() {
   let local = null;
   let localError = null;
   try {
-    local = await collectLocalUsage(rangeDays, collectedAt);
+    local = await collectLocalUsage(ranges, collectedAt);
   } catch (error) {
     localError = error;
   }
@@ -565,9 +575,9 @@ async function collectAllUsage() {
   const [oauthRateLimits, desktopConversation] = await Promise.all([oauthPromise, desktopPromise]);
   const snapshot = {
     collectedAt,
-    rangeDays,
-    claude: collectedProvider('claude', local && local.claude, localError, collectedAt, rangeDays),
-    codex: collectedProvider('codex', local && local.codex, localError, collectedAt, rangeDays),
+    ranges,
+    claude: collectedProvider('claude', local && local.claude, localError, collectedAt, ranges.claude),
+    codex: collectedProvider('codex', local && local.codex, localError, collectedAt, ranges.codex),
   };
   if (local && accountLedger) {
     const today = dayKey(new Date(collectedAt));
@@ -589,7 +599,7 @@ async function collectAllUsage() {
   for (const provider of ['claude', 'codex']) {
     delete snapshot[provider].daily;
     snapshot[provider].accounts = accountLedger
-      ? { ...summarizeAccounts(accountLedger, provider, rangeDays, new Date(collectedAt)), error: accountLedgerError }
+      ? { ...summarizeAccounts(accountLedger, provider, ranges[provider], new Date(collectedAt)), error: accountLedgerError }
       : { trackingStartedAt: null, items: [], error: accountLedgerError };
   }
   if (local) snapshot.diagnostics = local.diagnostics;
@@ -815,14 +825,14 @@ function updateTray(snapshot) {
     .join(' · ');
   const claudeWindows = claude.rateLimits;
   const codexWindows = (codex.rateLimits && codex.rateLimits.windows) || [];
-  const rangeLabel = snapshot.rangeDays === 1 ? '今日' : `${snapshot.rangeDays}天`;
+  const rangeLabel = (usage) => usage.rangeDays === 1 ? '今日' : `${usage.rangeDays}天`;
   const windowText = (label, value) => (value ? ` · ${label} ${Math.round(value.usedPercentage)}%` : '');
   tray.setToolTip(
-    `Claude (${rangeLabel}): ${fmtTokens(claude.totals.output)} out \u00b7 ${costText(claude)}` +
+    `Claude (${rangeLabel(claude)}): ${fmtTokens(claude.totals.output)} out \u00b7 ${costText(claude)}` +
       windowText('5h', claudeWindows && claudeWindows.fiveHour) +
       windowText('7d', claudeWindows && claudeWindows.sevenDay) +
       windowText('Fable', claudeWindows && claudeWindows.sevenDayFable) +
-      `\nCodex (${rangeLabel}): ${fmtTokens(codex.totals.output)} out · ≈$${codex.costUSD.toFixed(2)}` +
+      `\nCodex (${rangeLabel(codex)}): ${fmtTokens(codex.totals.output)} out · ≈$${codex.costUSD.toFixed(2)}` +
       windowText('5h', codexWindows.find((value) => value.windowMinutes === 300)) +
       windowText('7d', codexWindows.find((value) => value.windowMinutes === 10080)) +
       (states ? ` · ${states}` : ''),
@@ -851,10 +861,11 @@ function refreshUsage() {
   return refreshPromise;
 }
 
-async function setUsageRange(value) {
+async function setUsageRange(provider, value) {
+  if (!['claude', 'codex'].includes(provider)) throw new RangeError('未知的用量来源');
   const rangeDays = normalizeRangeDays(value, null);
   if (!rangeDays) throw new RangeError('统计天数必须是 1 到 90 的整数');
-  settings.rangeDays = rangeDays;
+  settings[`${provider}RangeDays`] = rangeDays;
   saveSettings();
   if (refreshPromise) await refreshPromise.catch(() => {});
   return refreshUsage();
@@ -969,9 +980,9 @@ app.on('second-instance', () => {
 });
 
 ipcMain.handle('usage', () => usageSnapshot || refreshUsage());
-ipcMain.handle('usage-range', (event, rangeDays) => {
+ipcMain.handle('usage-range', (event, provider, rangeDays) => {
   if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的统计范围请求');
-  return setUsageRange(rangeDays);
+  return setUsageRange(provider, rangeDays);
 });
 ipcMain.handle('account-ledger-clear', async (event) => {
   if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的账号统计请求');

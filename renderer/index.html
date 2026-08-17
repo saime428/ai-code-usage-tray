@@ -276,7 +276,7 @@
       const unknown = new Set(usage.unknownModels || []);
       const costUnavailable = isClaude && usage.costCoverage === 'unavailable';
       const desktopChatDetected = isClaude && usage.sessions.some((session) => session.source === 'desktop-cache');
-      const rangeDays = usage.rangeDays || latest.rangeDays || 1;
+      const rangeDays = usage.rangeDays || latest.ranges?.[selected] || 1;
       const rangeLabel = rangeDays === 1 ? '今日' : `${rangeDays}天`;
       const rangeInput = document.getElementById('range-days');
       if (document.activeElement !== rangeInput) rangeInput.value = rangeDays;
@@ -535,6 +535,7 @@
 
     async function applyRange() {
       if (rangeBusy) return;
+      const provider = selected;
       const input = document.getElementById('range-days');
       const rangeDays = Number(input.value);
       if (!Number.isInteger(rangeDays) || rangeDays < 1 || rangeDays > 90) {
@@ -543,12 +544,12 @@
         return;
       }
       input.setCustomValidity('');
-      if (latest && rangeDays === latest.rangeDays) return;
+      if (latest && rangeDays === latest[provider].rangeDays) return;
       rangeBusy = true;
-      document.getElementById('feedback').textContent = `正在统计最近 ${rangeDays} 天…`;
+      document.getElementById('feedback').textContent = `正在统计 ${provider === 'claude' ? 'Claude' : 'Codex'} 最近 ${rangeDays} 天…`;
       render();
       try {
-        latest = await window.api.setUsageRange(rangeDays);
+        latest = await window.api.setUsageRange(provider, rangeDays);
         document.getElementById('feedback').textContent = '';
       } catch (error) {
         document.getElementById('feedback').textContent = String(error.message || '统计范围更新失败').replace(/^.*Error: /, '');

@@ -36,7 +36,7 @@
 
 ## Phase 4: Main/Preload Coordination
 
-1. Persist validated `rangeDays` in the existing settings file.
+1. Persist validated Claude and Codex range values independently in the existing settings file, migrating the legacy shared value to both.
 2. Sample provider identities before and after worker collection and accept only matching identities.
 3. Record current-day observations, attach selected-range account summaries and coverage time, then publish one snapshot to panel, floating window, and tray.
 4. Add narrow IPC for range changes and confirmed ledger clearing.
@@ -62,7 +62,7 @@
 7. **Frequent encrypted rewrites cause needless disk churn.** Resolution: write only changed state, debounce, and flush during controlled shutdown.
 8. **Custom historical ranges can scan gigabytes.** Resolution: worker thread plus coverage-aware in-memory file cache.
 9. **Rapid custom-range requests race.** Resolution: latest pending request and response ID checks.
-10. **Range labels can become misleading.** Resolution: derive date, empty, cost, tray, and floating labels from validated `rangeDays`.
+10. **Range labels can become misleading.** Resolution: derive each provider's date, empty, cost, tray, and floating labels from its validated range.
 11. **Clear could delete the wrong data.** Resolution: fixed literal ledger path under `app.getPath('userData')`, confirmation, and a test that source transcript paths are never targeted.
 12. **Fixed panel can overflow.** Resolution: compact account rows and range-aware session-row cap, verified without UI automation.
 

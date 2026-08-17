@@ -24,8 +24,9 @@ Approved scope. Implementation, local validation build, and a separate local com
 
 - `rangeDays` is an integer from 1 through 90; invalid values are rejected.
 - Today is day one. The range starts at local midnight `rangeDays - 1` dates before today and ends at collection time.
-- The selected value is saved in the existing application settings and defaults to `1`.
-- Token totals, per-model totals, request/turn counts, unknown-price coverage, estimated cost, and per-account ledger summaries follow the selected range.
+- Claude and Codex have independent selected values, both saved in the existing application settings and defaulting to `1`.
+- An existing shared `rangeDays` value is migrated to both providers on upgrade.
+- Token totals, per-model totals, request/turn counts, unknown-price coverage, estimated cost, and per-account ledger summaries follow that provider's selected range.
 - Provider quota windows retain their provider-defined periods.
 - Recent sessions retain their rolling 24-hour period.
 
@@ -149,7 +150,7 @@ Missing quota alone is not an error when token fallback is valid. Existing stale
 ## Acceptance Criteria
 
 - Values from 1 through 90 produce correct local calendar boundaries, including month/year transitions.
-- A 10-day request updates totals, models, cost, empty labels, tray text, floating fallback, and account summaries consistently.
+- A provider's 10-day request updates its totals, models, cost, empty labels, tray text, floating fallback, and account summaries without changing the other provider's range.
 - Old transcript data never appears under a detected account.
 - Same-account short-interval positive deltas are recorded exactly once.
 - account switches, long gaps, missing identities, and counter resets cannot produce false account attribution.
