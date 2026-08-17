@@ -230,6 +230,7 @@
     let authBusy = false;
     let authFeedback = '';
     let authFeedbackError = false;
+    let closeTimer;
 
     function render() {
       if (!latest) return;
@@ -470,6 +471,11 @@
 
     document.getElementById('account-code').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') document.getElementById('account-button').click();
+    });
+
+    document.documentElement.addEventListener('mouseenter', () => clearTimeout(closeTimer));
+    document.documentElement.addEventListener('mouseleave', () => {
+      closeTimer = setTimeout(() => window.api.closePanel(), 300);
     });
 
     window.api.onUsage((usage) => { latest = usage; render(); });

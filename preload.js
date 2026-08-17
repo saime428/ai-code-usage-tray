@@ -23,4 +23,5 @@ contextBridge.exposeInMainWorld('api', {
   setFloatingExpanded: (expanded, reduceMotion = false) =>
     ipcRenderer.send('floating-expanded', { expanded, reduceMotion }),
   openPanel: () => ipcRenderer.send('open-panel'),
+  closePanel: () => ipcRenderer.send('close-panel'),
 });

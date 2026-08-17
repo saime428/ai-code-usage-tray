@@ -792,6 +792,9 @@ ipcMain.on('floating-expanded', (event, state) => {
 ipcMain.on('open-panel', (event) => {
   if (floatingWin && event.sender === floatingWin.webContents) togglePanel(settings.floatingPosition);
 });
+ipcMain.on('close-panel', (event) => {
+  if (panelWin && event.sender === panelWin.webContents) panelWin.hide();
+});
 ipcMain.handle('claude-auth-status', (event) => {
   if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的账户请求');
   return claudeAuthStatus();
