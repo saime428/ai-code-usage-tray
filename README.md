@@ -5,7 +5,7 @@
 <h1 align="center">AI Code Usage Tray</h1>
 
 <p align="center">
-  一个轻量、本地优先的 Windows 托盘监视器，同时查看 Claude Code / Desktop 与 Codex CLI / Desktop 的用量、额度和会话状态。
+  一个轻量、本地优先的 Windows 托盘监视器，同时查看 Claude Code / Desktop 与 Codex CLI / Desktop 的用量、额度、账号和会话状态。
 </p>
 
 <p align="center">
@@ -13,10 +13,6 @@
   · <a href="#快速开始">快速开始</a>
   · <a href="#本地开发">开发指南</a>
   · <a href="#english">English</a>
-</p>
-
-<p align="center">
-  <img src="docs/dashboard.png" width="520" alt="AI Code Usage Tray dashboard with anonymized demo data">
 </p>
 
 > [!NOTE]
@@ -29,7 +25,9 @@
 | | |
 | --- | --- |
 | **Claude + Codex 一处查看** | 同时聚合 Claude Code、Claude Desktop、Codex CLI 和 Codex Desktop。 |
+| **独立日期范围** | Claude 与 Codex 可分别选择最近 1–90 天，互不影响。 |
 | **额度窗口** | 显示可用的 5h / 7d 使用比例、重置时间和数据新鲜度。 |
+| **分账号用量** | 从启用新版起按当前账号累计 Token；本地账本由 Windows 加密保存。 |
 | **会话状态** | 区分工作中、需处理和空闲；Desktop 会话可从面板直接打开。 |
 | **贴边悬浮条** | 顶部或右侧常驻，悬停展开；全屏应用中也保持显示。 |
 | **本地优先** | 默认只读取本机客户端已产生的数据，不上传提示词或会话内容。 |
@@ -154,7 +152,7 @@ npm test
 <a id="english"></a>
 ## English
 
-**AI Code Usage Tray** is a local-first Windows tray monitor for Claude Code/Desktop and Codex CLI/Desktop. It shows daily tokens, API-equivalent value, available 5-hour / 7-day rate-limit windows, reset times, and recent session activity without uploading transcript contents or requiring API keys. Regular Claude Desktop Home chats expose only local session metadata and quota percentages, not exact token details, so their API-equivalent value cannot be calculated.
+**AI Code Usage Tray** is a local-first Windows tray monitor for Claude Code/Desktop and Codex CLI/Desktop. It shows independent 1–90 day token ranges, API-equivalent value, available quota windows (including Claude Fable when provided), prospective per-account usage, reset times, and recent session activity without uploading transcript contents or requiring API keys. Regular Claude Desktop Home chats expose only local session metadata and quota percentages, not exact token details, so their API-equivalent value cannot be calculated.
 
 Download the portable x64 executable from [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest), or clone the repository and run `npm ci`, `npm test`, and `npm start`. See the [Privacy Policy](PRIVACY.md) and [Code signing policy](#code-signing-policy).
 
