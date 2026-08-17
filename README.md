@@ -15,6 +15,10 @@
   · <a href="#english">English</a>
 </p>
 
+<p align="center">
+  <img src="docs/dashboard.png" alt="完整面板：Claude 用量、5h / 7d / Fable 额度和已连接账户">
+</p>
+
 > [!NOTE]
 > 面板里的金额是按官方标准 API 价格计算的**等价值**，用来对照消耗快慢。Claude / Codex 订阅不会按这个金额扣费。
 >
