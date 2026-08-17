@@ -37,7 +37,22 @@
       font-size: 13px;
       font-weight: 600;
     }
-    h1 .date { font-weight: 400; }
+    h1 .date { display: block; color: var(--muted); font-size: 10px; font-weight: 400; }
+    .range-meta { text-align: right; }
+    .range-control { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+    .range-control input {
+      width: 42px;
+      height: 22px;
+      padding: 0 3px;
+      border: 1px solid #44444d;
+      border-radius: 4px;
+      background: var(--surface);
+      color: var(--text);
+      font: 600 11px/1 'Segoe UI', system-ui, sans-serif;
+      text-align: center;
+      user-select: text;
+    }
+    .range-control input:disabled { opacity: .55; }
     .engine {
       border: 0;
       padding: 2px;
@@ -48,8 +63,9 @@
       cursor: pointer;
     }
     .engine.active { color: var(--text); }
-    .engine:focus-visible, .session-button:focus-visible, .account-button:focus-visible, .account-code:focus-visible, .account-cancel:focus-visible { outline: 2px solid #80aaff; outline-offset: 2px; }
-    .big { margin: 6px 0 0; color: var(--accent); font-size: 30px; font-weight: 700; }
+    .engine:focus-visible, .session-button:focus-visible, .account-button:focus-visible, .account-code:focus-visible, .account-cancel:focus-visible, .range-control input:focus-visible, .ledger-clear:focus-visible { outline: 2px solid #80aaff; outline-offset: 2px; }
+    .cost-label { margin-top: 6px; color: var(--muted); font-size: 10px; }
+    .big { margin: 0; color: var(--accent); font-size: 30px; font-weight: 700; }
     .sub { margin: 2px 0 14px; color: var(--subtle); }
     .limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: -4px 0 14px; }
     .limit { padding: 7px 8px; border-radius: 5px; background: var(--surface); }
@@ -144,6 +160,16 @@
       white-space: nowrap;
     }
     .unavailable { color: var(--warn); font-size: 10px; }
+    .usage-accounts { margin: -4px 0 12px; padding-top: 7px; border-top: 1px solid var(--border); }
+    .usage-accounts[hidden] { display: none; }
+    .usage-accounts-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+    .usage-accounts-head h2 { margin: 0; }
+    .ledger-clear { border: 0; padding: 2px; background: none; color: var(--muted); font: 10px/1 'Segoe UI', system-ui, sans-serif; cursor: pointer; }
+    .ledger-clear:hover { color: var(--text); }
+    .usage-account-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 2px 0; color: #c9c7c4; font-size: 11px; }
+    .usage-account-row span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .usage-account-meta { margin-top: 2px; color: var(--muted); font-size: 9px; }
+    .usage-account-meta.error { color: var(--warn); }
     h2 { margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
     .session {
       display: flex;
@@ -182,8 +208,9 @@
   <div class="wrap">
     <h1>
       <span><button class="engine active" data-engine="claude" aria-pressed="true">Claude</button> / <button class="engine" data-engine="codex" aria-pressed="false">Codex</button></span>
-      <span class="date" id="date"></span>
+      <span class="range-meta"><label class="range-control">最近 <input id="range-days" type="number" min="1" max="90" step="1" inputmode="numeric" aria-label="最近统计天数" /> 天</label><span class="date" id="date"></span></span>
     </h1>
+    <div class="cost-label" id="cost-label">今日等价值</div>
     <div class="big" id="cost">—</div>
     <div class="sub" id="totals">—</div>
     <div class="limits" id="limits" hidden></div>
@@ -204,6 +231,12 @@
     </table>
     <div class="empty" id="empty" hidden>今天还没有用量记录。</div>
 
+    <section class="usage-accounts" id="usage-accounts" hidden aria-label="分账号 Token 用量">
+      <div class="usage-accounts-head"><h2>账号用量</h2><button type="button" class="ledger-clear" id="ledger-clear">清除记录</button></div>
+      <div id="usage-account-rows"></div>
+      <div class="usage-account-meta" id="usage-account-meta"></div>
+    </section>
+
     <h2>最近 24h 会话</h2>
     <div id="sessions"></div>
     <div class="feedback" id="feedback" role="status" aria-live="polite"></div>
@@ -211,8 +244,10 @@
   </div>
 
   <script>
-    const fmt = (n) =>
-      n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n);
+    const fmt = (value) => {
+      const n = Number.isFinite(value) ? Math.max(0, value) : 0;
+      return n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
+    };
     const shortModel = (model) => model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
     const stateLabel = { working: '工作中', waiting: '等你', attention: '需处理', idle: '空闲' };
     const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -230,6 +265,8 @@
     let authBusy = false;
     let authFeedback = '';
     let authFeedbackError = false;
+    let rangeBusy = false;
+    let ledgerBusy = false;
     let closeTimer;
 
     function render() {
@@ -239,7 +276,13 @@
       const unknown = new Set(usage.unknownModels || []);
       const costUnavailable = isClaude && usage.costCoverage === 'unavailable';
       const desktopChatDetected = isClaude && usage.sessions.some((session) => session.source === 'desktop-cache');
+      const rangeDays = usage.rangeDays || latest.rangeDays || 1;
+      const rangeLabel = rangeDays === 1 ? '今日' : `${rangeDays}天`;
+      const rangeInput = document.getElementById('range-days');
+      if (document.activeElement !== rangeInput) rangeInput.value = rangeDays;
+      rangeInput.disabled = rangeBusy;
       document.getElementById('date').textContent = usage.date;
+      document.getElementById('cost-label').textContent = `${rangeLabel}等价值`;
       document.getElementById('cost').textContent = costText(usage, isClaude, unknown);
       document.getElementById('totals').textContent = costUnavailable
         ? desktopChatDetected
@@ -311,7 +354,7 @@
         ? desktopChatDetected
           ? '普通 Home 聊天只能识别会话；token/金额仅统计有本地 transcript 的 Claude Code/Cowork。'
           : 'Claude Desktop 未提供本地 token 明细。'
-        : '今天还没有 ' + (isClaude ? 'Claude' : 'Codex') + ' 用量记录。';
+        : `${rangeLabel}还没有 ${isClaude ? 'Claude' : 'Codex'} 用量记录。`;
       document.getElementById('model-head').innerHTML = isClaude
         ? '<th>模型</th><th>请求</th><th>In</th><th>Out</th><th>Cache读</th><th>$</th>'
         : '<th>模型</th><th>轮次</th><th>In</th><th>Out</th><th>Cache读</th><th>$</th>';
@@ -321,7 +364,23 @@
         <td>${unknown.has(model) ? '<span class="unavailable" title="价格不可用">不可用</span>' : bucket.costUSD.toFixed(2)}</td>
       </tr>`).join('');
 
-      visibleSessions = usage.sessions.slice(0, isClaude ? (claudeAuth.awaitingCode ? 3 : 5) : limits.length ? 6 : 8);
+      const accountUsage = usage.accounts || { trackingStartedAt: null, items: [], error: null };
+      const accountItems = accountUsage.items || [];
+      const accountSection = document.getElementById('usage-accounts');
+      accountSection.hidden = !accountUsage.trackingStartedAt && !accountUsage.error;
+      document.getElementById('usage-account-rows').innerHTML = accountItems.length
+        ? accountItems.map((item) => `<div class="usage-account-row"><span title="${esc(item.label)}">${esc(item.label)}</span><strong>${fmt(item.totalTokens)}</strong></div>`).join('')
+        : '<div class="usage-account-row"><span>暂无新增账号用量</span><strong>0</strong></div>';
+      const accountMeta = document.getElementById('usage-account-meta');
+      accountMeta.textContent = accountUsage.error || (accountUsage.trackingStartedAt
+        ? `分账号统计始于 ${new Date(accountUsage.trackingStartedAt).toLocaleString('zh-CN')}`
+        : '');
+      accountMeta.classList.toggle('error', Boolean(accountUsage.error));
+      document.getElementById('ledger-clear').disabled = ledgerBusy || (!accountUsage.trackingStartedAt && !accountUsage.error);
+
+      const accountRows = accountItems.length || 1;
+      const baseSessionCount = isClaude ? (claudeAuth.awaitingCode ? 3 : 5) : limits.length ? 6 : 8;
+      visibleSessions = usage.sessions.slice(0, Math.max(2, baseSessionCount - Math.min(3, accountRows)));
       const sessionEmpty = isClaude && usage.appRunning
         ? 'Claude Desktop 已打开，但当前聊天没有本地 transcript。'
         : '最近 24 小时没有会话。';
@@ -353,6 +412,7 @@
         isClaude && usage.appRunning ? 'Claude Desktop 当前正在运行' : '',
         unknown.size ? `${unknown.size} 个模型价格不可用，合计金额不完整` : '',
         usage.dataStatus?.state !== 'ok' ? usage.dataStatus.message : '',
+        accountUsage.error || '',
         usage.rateLimits?.stale ? '额度数据已超过 15 分钟未更新' : '',
         isClaude && usage.rateLimits?.source === 'desktop' ? '≈ 重置时间由 Claude Desktop 本地采样推算，约有 5 分钟误差' : '',
       ].filter(Boolean);
@@ -471,6 +531,54 @@
 
     document.getElementById('account-code').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') document.getElementById('account-button').click();
+    });
+
+    async function applyRange() {
+      if (rangeBusy) return;
+      const input = document.getElementById('range-days');
+      const rangeDays = Number(input.value);
+      if (!Number.isInteger(rangeDays) || rangeDays < 1 || rangeDays > 90) {
+        input.setCustomValidity('请输入 1 到 90 的整数');
+        input.reportValidity();
+        return;
+      }
+      input.setCustomValidity('');
+      if (latest && rangeDays === latest.rangeDays) return;
+      rangeBusy = true;
+      document.getElementById('feedback').textContent = `正在统计最近 ${rangeDays} 天…`;
+      render();
+      try {
+        latest = await window.api.setUsageRange(rangeDays);
+        document.getElementById('feedback').textContent = '';
+      } catch (error) {
+        document.getElementById('feedback').textContent = String(error.message || '统计范围更新失败').replace(/^.*Error: /, '');
+      } finally {
+        rangeBusy = false;
+        render();
+      }
+    }
+
+    document.getElementById('range-days').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        event.currentTarget.blur();
+      }
+    });
+    document.getElementById('range-days').addEventListener('blur', applyRange);
+
+    document.getElementById('ledger-clear').addEventListener('click', async () => {
+      if (ledgerBusy || !confirm('只清除本应用从启用后记录的分账号统计？Claude/Codex 原始会话不会删除。')) return;
+      ledgerBusy = true;
+      render();
+      try {
+        latest = await window.api.clearAccountLedger();
+        document.getElementById('feedback').textContent = '分账号统计已清除，并已重新建立基线。';
+      } catch (error) {
+        document.getElementById('feedback').textContent = String(error.message || '清除失败').replace(/^.*Error: /, '');
+      } finally {
+        ledgerBusy = false;
+        render();
+      }
     });
 
     document.documentElement.addEventListener('mouseenter', () => clearTimeout(closeTimer));

@@ -122,6 +122,10 @@
     .provider-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
     .provider-status.bad::before { background: var(--warn); }
     .empty-quota { padding: 18px 0 12px; color: var(--muted); text-align: center; }
+    .token-fallback { padding: 12px 0 8px; text-align: center; font-variant-numeric: tabular-nums; }
+    .token-total { color: #d4d2cf; font-size: 13px; font-weight: 700; }
+    .token-total small { margin-right: 4px; color: var(--muted); font-size: 10px; font-weight: 600; }
+    .token-breakdown { margin-top: 3px; color: var(--muted); font-size: 10px; }
     body.position-top #surface { top: 2px; left: 50%; width: 436px; height: 220px; clip-path: inset(0 40px 182px 40px round 12px); transform: translateX(-50%); }
     body.position-top #surface::after { top: 0; left: 40px; width: 356px; height: 38px; }
     body.position-top .compact { top: 0; left: 40px; width: 356px; height: 38px; }
@@ -178,10 +182,28 @@
           ].filter(([, value]) => value);
     const isStale = (usage) =>
       usage.dataStatus?.state !== 'ok' || Boolean(usage.rateLimits && usage.rateLimits.stale);
+    const tokenValue = (value) => Number.isFinite(value) ? Math.max(0, value) : 0;
+    const formatTokens = (value) => {
+      const n = tokenValue(value);
+      return n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
+    };
+    const tokenUsage = (provider, usage) => {
+      const totals = usage.totals || {};
+      const input = tokenValue(totals.input) + (provider === 'claude'
+        ? tokenValue(totals.cacheRead) + tokenValue(totals.cacheWrite)
+        : 0);
+      const output = tokenValue(totals.output);
+      return { input, output, total: input + output };
+    };
+    const rangeLabel = (usage) => usage.rangeDays === 1 ? '今日' : `${usage.rangeDays || 1}天`;
     const statusText = (usage, provider) => {
       if (usage.dataStatus?.state !== 'ok') return usage.dataStatus.message || '本地数据读取失败';
-      if (!usage.rateLimits) return '额度数据尚不可用';
-      if (usage.rateLimits.stale) return '额度数据已超过 15 分钟未更新';
+      if (usage.rateLimits?.stale) return '额度数据已超过 15 分钟未更新';
+      if (!windowsFor(provider, usage).length) {
+        return tokenUsage(provider, usage).total > 0
+          ? `未提供额度 · 显示${rangeLabel(usage)} Token`
+          : '额度数据尚不可用';
+      }
       if (provider === 'claude' && usage.appRunning && usage.costCoverage === 'unavailable') {
         const detected = usage.sessions.some((session) => session.source === 'desktop-cache');
         return detected ? '已识别 Home 聊天 · token/金额不可用' : 'Claude Desktop 已打开 · token 明细不可用';
@@ -210,11 +232,14 @@
         .map((provider) => {
           const usage = latest[provider];
           const windows = windowsFor(provider, usage);
+          const tokens = tokenUsage(provider, usage);
           return `<div class="compact-provider ${isStale(usage) ? 'stale' : ''}">
             ${logo(provider)}
             <div class="metrics">${windows.length
               ? windows.map(([label, value]) => `<span class="metric"><b>${label}</b>${Math.round(value.usedPercentage)}%</span>`).join('')
-              : '<span class="dash">—</span>'}</div>
+              : tokens.total > 0
+                ? `<span class="metric"><b>${usage.rangeDays || 1}d</b>${formatTokens(tokens.total)}</span>`
+                : '<span class="dash">—</span>'}</div>
             ${isStale(usage) ? '<span class="warning" title="数据可能已过期">!</span>' : ''}
           </div>`;
         })
@@ -224,10 +249,11 @@
           const info = providerInfo[provider];
           const usage = latest[provider];
           const windows = windowsFor(provider, usage);
+          const tokens = tokenUsage(provider, usage);
           const stale = isStale(usage);
           return `<section class="provider ${stale ? 'stale' : ''}">
             <div class="provider-head">${logo(provider)}<span class="provider-name">${info.name}</span>
-              <span class="cost"><small>今日等价值</small> ${costText(provider, usage)}</span></div>
+              <span class="cost"><small>${rangeLabel(usage)}等价值</small> ${costText(provider, usage)}</span></div>
             ${windows.length ? windows.map(([label, value]) => {
               const pct = Math.round(value.usedPercentage);
               const level = pct >= 95 ? 'danger' : pct >= 80 ? 'warn' : '';
@@ -235,8 +261,10 @@
               return `<div class="quota"><div class="quota-head"><strong>${label}</strong><span>${pct}% 已用</span></div>
                 <div class="bar"><i class="${level}" style="width:${Math.min(100, Math.max(0, pct))}%"></i></div>
                 ${reset ? `<div class="reset">${reset}</div>` : ''}</div>`;
-            }).join('') : '<div class="empty-quota">额度 —</div>'}
-            <div class="provider-status ${stale || !usage.rateLimits ? 'bad' : ''}" title="${usage.rateLimits?.source === 'desktop' ? 'Claude Desktop 每约 5 分钟采样；≈ 为本地推算时间' : ''}">${statusText(usage, provider)}${usage.rateLimits?.source === 'desktop' ? ' · 重置时间为本地推算' : ''}</div>
+            }).join('') : tokens.total > 0
+              ? `<div class="token-fallback"><div class="token-total"><small>${rangeLabel(usage)} Token</small>${formatTokens(tokens.total)}</div><div class="token-breakdown">输入 ${formatTokens(tokens.input)} · 输出 ${formatTokens(tokens.output)}</div></div>`
+              : '<div class="empty-quota">额度 —</div>'}
+            <div class="provider-status ${stale || (!windows.length && tokens.total === 0) ? 'bad' : ''}" title="${usage.rateLimits?.source === 'desktop' ? 'Claude Desktop 每约 5 分钟采样；≈ 为本地推算时间' : ''}">${statusText(usage, provider)}${usage.rateLimits?.source === 'desktop' ? ' · 重置时间为本地推算' : ''}</div>
           </section>`;
         })
         .join('');

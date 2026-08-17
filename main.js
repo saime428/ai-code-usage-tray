@@ -15,8 +15,17 @@ const {
 const fs = require('fs');
 const path = require('path');
 const { execFile, execFileSync } = require('child_process');
-const { collectUsage, DEFAULT_ROOT } = require('./lib/usage');
-const { collectCodexUsage, DEFAULT_CODEX_ROOT } = require('./lib/codex-usage');
+const { Worker } = require('worker_threads');
+const { DEFAULT_ROOT } = require('./lib/usage');
+const { DEFAULT_CODEX_ROOT } = require('./lib/codex-usage');
+const { dayKey, normalizeRangeDays, rangeBounds } = require('./lib/range');
+const { detectIdentities } = require('./lib/account-identity');
+const {
+  createLedger,
+  validateLedger,
+  observeProvider,
+  summarizeAccounts,
+} = require('./lib/account-ledger');
 const { sessionTarget } = require('./lib/open-session');
 const {
   createAuthorization,
@@ -46,6 +55,29 @@ if (probeProfile) {
   return;
 }
 
+if (process.env.AI_CODE_USAGE_WORKER_SMOKE === '1') {
+  const workerPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'lib', 'usage-worker.js')
+    : path.join(__dirname, 'lib', 'usage-worker.js');
+  const worker = new Worker(workerPath);
+  const timer = setTimeout(() => {
+    process.stderr.write('WORKER_TIMEOUT\n');
+    worker.terminate().finally(() => app.exit(1));
+  }, 120_000);
+  worker.once('message', (message) => {
+    clearTimeout(timer);
+    process.stdout.write(message.ok ? 'WORKER_OK\n' : `WORKER_ERROR ${message.error}\n`);
+    worker.terminate().finally(() => app.exit(message.ok ? 0 : 1));
+  });
+  worker.once('error', (error) => {
+    clearTimeout(timer);
+    process.stderr.write(`WORKER_ERROR ${String(error.stack || error)}\n`);
+    app.exit(1);
+  });
+  worker.postMessage({ id: 1, rangeDays: 1, now: Date.now() });
+  return;
+}
+
 const systemFetch = (...args) => net.fetch(...args);
 
 const PANEL = { width: 380, height: 544 };
@@ -55,7 +87,7 @@ const FLOATING_SIZE = {
 };
 const FLOATING_COLLAPSE_MS = 300;
 const CLAUDE_OAUTH_REFRESH_MS = 5 * 60 * 1000;
-const DEFAULT_SETTINGS = { floatingEnabled: true, floatingPosition: 'top' };
+const DEFAULT_SETTINGS = { floatingEnabled: true, floatingPosition: 'top', rangeDays: 1 };
 const LOGIN_ITEM_PATH = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
 let tray = null;
 let panelWin = null;
@@ -74,6 +106,13 @@ let claudeOAuthPromise = null;
 let claudeOAuthCache = null;
 let claudeAuthError = null;
 let claudeDesktopCache = { signature: null, conversation: null };
+let usageWorker = null;
+let usageWorkerRequestId = 0;
+const usageWorkerRequests = new Map();
+let accountLedger = null;
+let accountLedgerError = null;
+let accountLedgerDirty = false;
+let accountLedgerWriteTimer = null;
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
@@ -150,11 +189,16 @@ function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
 
+function accountLedgerPath() {
+  return path.join(app.getPath('userData'), 'usage-ledger-v1.bin');
+}
+
 function loadSettings() {
   try {
     const saved = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
     settings.floatingEnabled = saved.floatingEnabled !== false;
     settings.floatingPosition = saved.floatingPosition === 'right' ? 'right' : 'top';
+    settings.rangeDays = normalizeRangeDays(saved.rangeDays);
   } catch {
     settings = { ...DEFAULT_SETTINGS };
   }
@@ -166,6 +210,100 @@ function saveSettings() {
   } catch {
     // A read-only profile should not stop the monitor from running.
   }
+}
+
+function loadAccountLedger() {
+  const file = accountLedgerPath();
+  accountLedgerError = null;
+  try {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows 加密存储不可用');
+    accountLedger = fs.existsSync(file)
+      ? validateLedger(JSON.parse(safeStorage.decryptString(fs.readFileSync(file))))
+      : createLedger();
+  } catch (error) {
+    accountLedger = null;
+    accountLedgerError = `账号统计账本无法读取：${String(error.message || error)} (${file})`;
+  }
+}
+
+function flushAccountLedger() {
+  if (!accountLedgerDirty || !accountLedger) return;
+  const file = accountLedgerPath();
+  const temp = `${file}.${process.pid}.tmp`;
+  try {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows 加密存储不可用');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(temp, safeStorage.encryptString(JSON.stringify(accountLedger)), { mode: 0o600 });
+    fs.renameSync(temp, file);
+    accountLedgerDirty = false;
+    accountLedgerError = null;
+  } catch (error) {
+    accountLedgerError = `账号统计账本无法保存：${String(error.message || error)} (${file})`;
+  } finally {
+    try {
+      fs.unlinkSync(temp);
+    } catch {
+      // A successful rename already removed the temporary file.
+    }
+  }
+}
+
+function scheduleAccountLedgerWrite() {
+  accountLedgerDirty = true;
+  clearTimeout(accountLedgerWriteTimer);
+  accountLedgerWriteTimer = setTimeout(() => {
+    accountLedgerWriteTimer = null;
+    flushAccountLedger();
+  }, 1000);
+}
+
+function clearAccountLedger() {
+  clearTimeout(accountLedgerWriteTimer);
+  accountLedgerWriteTimer = null;
+  const file = accountLedgerPath();
+  try {
+    fs.unlinkSync(file);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  accountLedger = createLedger();
+  accountLedgerError = null;
+  accountLedgerDirty = false;
+}
+
+function rejectWorkerRequests(error) {
+  for (const { reject } of usageWorkerRequests.values()) reject(error);
+  usageWorkerRequests.clear();
+}
+
+function ensureUsageWorker() {
+  if (usageWorker) return usageWorker;
+  const workerPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'lib', 'usage-worker.js')
+    : path.join(__dirname, 'lib', 'usage-worker.js');
+  const worker = new Worker(workerPath);
+  usageWorker = worker;
+  worker.on('message', (message) => {
+    const pending = usageWorkerRequests.get(message.id);
+    if (!pending) return;
+    usageWorkerRequests.delete(message.id);
+    if (message.ok) pending.resolve(message.value);
+    else pending.reject(new Error(message.error || '本地用量 Worker 失败'));
+  });
+  worker.on('error', (error) => rejectWorkerRequests(error));
+  worker.on('exit', (code) => {
+    if (usageWorker === worker) usageWorker = null;
+    if (!quitting) rejectWorkerRequests(new Error(`本地用量 Worker 已退出 (${code})`));
+  });
+  return worker;
+}
+
+function collectLocalUsage(rangeDays, now) {
+  const id = ++usageWorkerRequestId;
+  return new Promise((resolve, reject) => {
+    usageWorkerRequests.set(id, { resolve, reject });
+    ensureUsageWorker().postMessage({ id, rangeDays, now });
+  });
 }
 
 function claudeAuthPath() {
@@ -369,10 +507,13 @@ async function getClaudeOAuthRateLimits(force = false) {
   return claudeOAuthPromise;
 }
 
-function emptyUsage(error, collectedAt) {
-  const date = new Date(collectedAt).toLocaleDateString('sv-SE');
+function emptyUsage(error, collectedAt, rangeDays = settings.rangeDays) {
+  const range = rangeBounds(new Date(collectedAt), rangeDays);
   return {
-    date,
+    date: range.date,
+    rangeDays: range.rangeDays,
+    rangeStart: range.rangeStart,
+    rangeEnd: range.rangeEnd,
     byModel: {},
     totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, requests: 0 },
     costUSD: 0,
@@ -384,37 +525,74 @@ function emptyUsage(error, collectedAt) {
   };
 }
 
-function collectProvider(name, collect, collectedAt) {
-  try {
-    return { ...collect(), dataStatus: { state: 'ok', updatedAt: collectedAt } };
-  } catch (error) {
-    const message = error && error.code === 'EACCES' ? '本地数据无读取权限' : '本地数据读取失败';
-    const previous = usageSnapshot && usageSnapshot[name];
-    return previous
-      ? {
-          ...previous,
-          dataStatus: {
-            state: 'stale',
-            updatedAt: previous.dataStatus?.updatedAt || collectedAt,
-            message,
-          },
-        }
-      : emptyUsage(message, collectedAt);
+function collectedProvider(name, value, error, collectedAt, rangeDays) {
+  if (value) return { ...value, dataStatus: { state: 'ok', updatedAt: collectedAt } };
+  const message = error && error.code === 'EACCES' ? '本地数据无读取权限' : '本地数据读取失败';
+  const previous = usageSnapshot && usageSnapshot[name];
+  if (previous && previous.rangeDays === rangeDays) {
+    return {
+      ...previous,
+      dataStatus: {
+        state: 'stale',
+        updatedAt: previous.dataStatus?.updatedAt || collectedAt,
+        message,
+      },
+    };
   }
+  const fallback = emptyUsage(message, collectedAt, rangeDays);
+  if (previous) {
+    fallback.rateLimits = previous.rateLimits || null;
+    fallback.sessions = previous.sessions || [];
+  }
+  return fallback;
 }
 
 async function collectAllUsage() {
   const collectedAt = Date.now();
+  const rangeDays = settings.rangeDays;
+  const identitiesBefore = detectIdentities();
+  const appRunning = isClaudeDesktopRunning();
+  const oauthPromise = getClaudeOAuthRateLimits();
+  const desktopPromise = appRunning ? readClaudeDesktopConversation() : Promise.resolve(null);
+  let local = null;
+  let localError = null;
+  try {
+    local = await collectLocalUsage(rangeDays, collectedAt);
+  } catch (error) {
+    localError = error;
+  }
+  const identitiesAfter = detectIdentities();
+  const [oauthRateLimits, desktopConversation] = await Promise.all([oauthPromise, desktopPromise]);
   const snapshot = {
     collectedAt,
-    claude: collectProvider('claude', collectUsage, collectedAt),
-    codex: collectProvider('codex', collectCodexUsage, collectedAt),
+    rangeDays,
+    claude: collectedProvider('claude', local && local.claude, localError, collectedAt, rangeDays),
+    codex: collectedProvider('codex', local && local.codex, localError, collectedAt, rangeDays),
   };
-  const appRunning = isClaudeDesktopRunning();
-  const [oauthRateLimits, desktopConversation] = await Promise.all([
-    getClaudeOAuthRateLimits(),
-    appRunning ? readClaudeDesktopConversation() : null,
-  ]);
+  if (local && accountLedger) {
+    const today = dayKey(new Date(collectedAt));
+    let changed = false;
+    for (const provider of ['claude', 'codex']) {
+      const before = identitiesBefore[provider];
+      const after = identitiesAfter[provider];
+      const account = before && after && before.id === after.id ? after : null;
+      changed = observeProvider(
+        accountLedger,
+        provider,
+        account,
+        local[provider].daily[today]?.byModel || {},
+        collectedAt,
+      ) || changed;
+    }
+    if (changed) scheduleAccountLedgerWrite();
+  }
+  for (const provider of ['claude', 'codex']) {
+    delete snapshot[provider].daily;
+    snapshot[provider].accounts = accountLedger
+      ? { ...summarizeAccounts(accountLedger, provider, rangeDays, new Date(collectedAt)), error: accountLedgerError }
+      : { trackingStartedAt: null, items: [], error: accountLedgerError };
+  }
+  if (local) snapshot.diagnostics = local.diagnostics;
   if (oauthRateLimits) snapshot.claude.rateLimits = oauthRateLimits;
   const desktopSession = desktopConversationSession(desktopConversation, collectedAt);
   if (desktopSession && !snapshot.claude.sessions.some((session) => session.sessionId === desktopSession.sessionId)) {
@@ -637,13 +815,14 @@ function updateTray(snapshot) {
     .join(' · ');
   const claudeWindows = claude.rateLimits;
   const codexWindows = (codex.rateLimits && codex.rateLimits.windows) || [];
+  const rangeLabel = snapshot.rangeDays === 1 ? '今日' : `${snapshot.rangeDays}天`;
   const windowText = (label, value) => (value ? ` · ${label} ${Math.round(value.usedPercentage)}%` : '');
   tray.setToolTip(
-    `Claude: ${fmtTokens(claude.totals.output)} out \u00b7 ${costText(claude)}` +
+    `Claude (${rangeLabel}): ${fmtTokens(claude.totals.output)} out \u00b7 ${costText(claude)}` +
       windowText('5h', claudeWindows && claudeWindows.fiveHour) +
       windowText('7d', claudeWindows && claudeWindows.sevenDay) +
       windowText('Fable', claudeWindows && claudeWindows.sevenDayFable) +
-      `\nCodex: ${fmtTokens(codex.totals.output)} out · ≈$${codex.costUSD.toFixed(2)}` +
+      `\nCodex (${rangeLabel}): ${fmtTokens(codex.totals.output)} out · ≈$${codex.costUSD.toFixed(2)}` +
       windowText('5h', codexWindows.find((value) => value.windowMinutes === 300)) +
       windowText('7d', codexWindows.find((value) => value.windowMinutes === 10080)) +
       (states ? ` · ${states}` : ''),
@@ -670,6 +849,15 @@ function refreshUsage() {
       refreshPromise = null;
     });
   return refreshPromise;
+}
+
+async function setUsageRange(value) {
+  const rangeDays = normalizeRangeDays(value, null);
+  if (!rangeDays) throw new RangeError('统计天数必须是 1 到 90 的整数');
+  settings.rangeDays = rangeDays;
+  saveSettings();
+  if (refreshPromise) await refreshPromise.catch(() => {});
+  return refreshUsage();
 }
 
 function setFloatingEnabled(enabled) {
@@ -759,6 +947,7 @@ function updateTrayMenu() {
 
 app.whenReady().then(() => {
   loadSettings();
+  loadAccountLedger();
   createPanelWindow();
   createFloatingWindow();
   tray = new Tray(trayIcon());
@@ -780,6 +969,16 @@ app.on('second-instance', () => {
 });
 
 ipcMain.handle('usage', () => usageSnapshot || refreshUsage());
+ipcMain.handle('usage-range', (event, rangeDays) => {
+  if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的统计范围请求');
+  return setUsageRange(rangeDays);
+});
+ipcMain.handle('account-ledger-clear', async (event) => {
+  if (!panelWin || event.sender !== panelWin.webContents) throw new Error('无效的账号统计请求');
+  if (refreshPromise) await refreshPromise.catch(() => {});
+  clearAccountLedger();
+  return refreshUsage();
+});
 ipcMain.handle('floating-state', () => ({
   position: settings.floatingPosition,
   expanded: floatingExpanded,
@@ -836,6 +1035,11 @@ ipcMain.handle('open-session', async (event, session) => {
 
 app.on('before-quit', () => {
   quitting = true;
+  clearTimeout(accountLedgerWriteTimer);
+  accountLedgerWriteTimer = null;
+  flushAccountLedger();
+  if (usageWorker) usageWorker.terminate();
+  usageWorker = null;
 });
 
 // tray app: closing the panel must not quit

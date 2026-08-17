@@ -27,6 +27,9 @@
     "appId": "com.aicode.usage-tray",
     "productName": "AI Code Usage Tray",
     "asar": true,
+    "asarUnpack": [
+      "lib/**/*"
+    ],
     "files": [
       "main.js",
       "preload.js",
