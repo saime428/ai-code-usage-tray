@@ -5,7 +5,7 @@
 <h1 align="center">AI Code Usage Tray</h1>
 
 <p align="center">
-  一个轻量、本地优先的 Windows 托盘监视器，同时查看 Claude Code / Desktop 与 Codex CLI / Desktop 的用量、额度、账号和会话状态。
+  本地优先的 Windows 托盘监视器，用来查看 Claude Code / Desktop 和 Codex CLI / Desktop 的用量、额度、账号和会话状态。
 </p>
 
 <p align="center">
@@ -16,32 +16,32 @@
 </p>
 
 > [!NOTE]
-> 面板中的金额是按官方标准 API 价格计算的**等价价值**，用于观察消耗速度；Claude / Codex 订阅用户不会按该金额再次扣费。
+> 面板里的金额是按官方标准 API 价格计算的**等价值**，用来对照消耗快慢。Claude / Codex 订阅不会按这个金额扣费。
 >
-> Claude Desktop 的普通 **Home 聊天只能识别会话元数据和额度百分比**。Claude 没有在本机提供精确 token 明细，因此这部分无法计算金额；金额只统计存在本地 transcript 的 Claude Code / Cowork 会话。连接 Claude 账户也只会提高额度与重置时间的准确度，不会补齐 Home 聊天 token。
+> Claude Desktop 的普通 Home 聊天，本机只有会话元数据和额度百分比，没有精确 token 明细，所以算不出金额。金额只统计本地有 transcript 的 Claude Code / Cowork 会话。连接 Claude 账户只会让额度和重置时间更准，补不齐 Home 聊天的 token。
 
 ## 亮点
 
 | | |
 | --- | --- |
-| **Claude + Codex 一处查看** | 同时聚合 Claude Code、Claude Desktop、Codex CLI 和 Codex Desktop。 |
-| **独立日期范围** | Claude 与 Codex 可分别选择最近 1–90 天，互不影响。 |
-| **额度窗口** | 显示可用的 5h / 7d 使用比例、重置时间和数据新鲜度。 |
-| **分账号用量** | 从启用新版起按当前账号累计 Token；本地账本由 Windows 加密保存。 |
-| **会话状态** | 区分工作中、需处理和空闲；Desktop 会话可从面板直接打开。 |
-| **贴边悬浮条** | 顶部或右侧常驻，悬停展开；全屏应用中也保持显示。 |
-| **本地优先** | 默认只读取本机客户端已产生的数据，不上传提示词或会话内容。 |
-| **零 API Key** | 本地模式无需 API Key；Claude OAuth 只是可选的精确额度来源。 |
+| **Claude + Codex 一处查看** | Claude Code、Claude Desktop、Codex CLI 和 Codex Desktop 放在同一面板。 |
+| **独立日期范围** | Claude 和 Codex 可以各自选最近 1–90 天，互不影响。 |
+| **额度窗口** | 显示 5h / 7d 使用比例、重置时间和数据更新时间。连上 Claude 账户后，有数据也会显示 Fable 窗口。 |
+| **分账号用量** | 从本机启用分账号统计后，按当前账号累计 Token，更早的记录不计在内。账本由 Windows 加密保存在本地。 |
+| **会话状态** | 区分工作中、需处理和空闲。Desktop 会话可以从面板打开。 |
+| **贴边悬浮条** | 可贴在屏幕顶部或右侧，悬停展开，全屏时也会继续显示。 |
+| **本地优先** | 默认只读本机客户端已经写下的数据，不上传提示词或会话内容。 |
+| **零 API Key** | 本地模式不需要 API Key。Claude OAuth 是可选项，用来读更准的额度。 |
 
 ## 快速开始
 
 1. 打开 [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest)。
 2. 下载 `AI-Code-Usage-Tray-*-win-x64.exe`。
-3. 双击运行，无需安装；单击悬浮条或系统托盘图标打开完整面板。
-4. 右键悬浮条或托盘图标，可刷新、启用开机自启、切换顶部/右侧、隐藏悬浮条或退出。
+3. 双击运行，无需安装。单击悬浮条或托盘图标打开完整面板。
+4. 右键悬浮条或托盘图标，可以刷新、开机自启、切换顶部/右侧、隐藏悬浮条或退出。
 
 > [!WARNING]
-> 当前便携版尚未进行 Windows 代码签名，SmartScreen 可能显示提醒。请只从本仓库的 Releases 下载，并核对 Release 中提供的 SHA-256。后续签名版本将按下方 [Code signing policy](#code-signing-policy) 发布。
+> 当前便携版还没有 Windows 代码签名，SmartScreen 可能会弹出提醒。请只从本仓库的 Releases 下载，并核对 Release 里的 SHA-256。之后的签名版本会按下面的 [Code signing policy](#code-signing-policy) 发布。
 
 ## 数据从哪里来
 
@@ -58,27 +58,27 @@ Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Clau
 
 ### 重置时间与刷新频率
 
-- 应用每 **30 秒**重新读取一次本地数据。
-- Claude Desktop 自己通常约每 **5 分钟**写入一次额度采样，所以界面显示的是“Desktop N 分钟前采样”。
-- Claude Desktop 本地历史不保存 `resets_at`。应用会根据最近一次归零与下一次采样推算重置时间，并用 **`≈`** 标记，通常约有 5 分钟误差。
-- 可选 Claude OAuth 成功后，会自动优先使用官方精确重置时间。凭证只通过 Windows `safeStorage` 加密保存在本应用数据目录，点击“断开”即删除。
+- 应用每 **30 秒**重读一次本地数据。
+- Claude Desktop 通常大约每 **5 分钟**写一次额度采样，所以界面会显示“Desktop N 分钟前采样”。
+- Claude Desktop 本地历史不保存 `resets_at`。应用会根据最近一次归零和下一次采样推算重置时间，并标上 **`≈`**，一般有大约 5 分钟误差。
+- 连上 Claude 账户后，会改用官方的精确重置时间。凭证用 Windows `safeStorage` 加密存在本应用数据目录，点“断开”就会删掉。
 
 ### 会话状态
 
 | 颜色 | 状态 | 含义 |
 | --- | --- | --- |
-| 🟢 | 工作中 | 最近仍在产生输出或写入会话 |
-| 🔴 | 需处理 | 权限确认或其他需要人工操作的事件 |
+| 🟢 | 工作中 | 最近还在输出，或会话文件仍在更新 |
+| 🔴 | 需处理 | 在等权限确认，或需要你在客户端里操作 |
 | ⚫ | 空闲 | 最近没有活动 |
 
-Claude CLI 配置 hooks 时可获得更准确的 working / attention / idle 状态；没有 hook 时使用会话写入时间回退。新写入的 transcript 会覆盖过期 hook，避免正在运行时仍显示旧状态；超过 30 分钟未更新的 hook 状态会回落为空闲。
+给 Claude CLI 配上 hooks 后，工作中 / 需处理 / 空闲会更准；没配时按会话文件的写入时间判断。新写入的 transcript 会覆盖过期 hook，避免会话还在跑却显示旧状态。hook 超过 30 分钟没更新，会改回空闲。
 
 ## 隐私与安全
 
 - 不上传 transcript、提示词、项目路径或会话标题。
-- 不读取浏览器 Cookie，不要求 Anthropic / OpenAI API Key。
-- 本地文件损坏、被锁定或权限不足时保留上一份快照，并明确标为过期。
-- OAuth 登录为可选功能；网络或 Anthropic 限流失败时，本地用量监控仍可继续工作。
+- 不读浏览器 Cookie，也不需要 Anthropic / OpenAI API Key。
+- 本地文件损坏、被锁或权限不够时，会留下上一份快照，并标成过期。
+- OAuth 登录是可选项。网络不通或碰到 Anthropic 限流时，本地用量监控照常工作。
 - 完整说明见 [Privacy Policy](PRIVACY.md)。
 
 ## Code signing policy
@@ -129,15 +129,15 @@ npm run dist
 git status --short
 ```
 
-更新 `package.json` 版本，在干净 Windows 环境启动便携版，再创建 GitHub Release 并上传 `.exe` 与 SHA-256。
+更新 `package.json` 版本，在干净的 Windows 环境里启动便携版，再创建 GitHub Release，上传 `.exe` 和 SHA-256。
 
 ## 当前限制
 
-- Windows x64 only。
-- 尚未接入自动更新。
-- 当前便携版尚未进行代码签名；SignPath Foundation 申请和自动签名接入正在进行。
-- Claude OAuth 可能受 Anthropic 限流或当前网络出口影响；本地推算不受影响。
-- Claude Desktop 普通 Home 聊天没有可读取的精确 token 明细，只能显示会话状态和额度百分比，无法计算金额。
+- 仅支持 Windows x64。
+- 还没有自动更新。
+- 当前便携版还没做代码签名。SignPath Foundation 的申请和自动签名都还在进行中。
+- Claude OAuth 可能被 Anthropic 限流，也可能受当前网络出口影响。本地推算不受影响。
+- Claude Desktop 普通 Home 聊天读不到精确 token 明细，只能显示会话状态和额度百分比，算不出金额。
 
 ## 贡献
 
@@ -147,14 +147,16 @@ Issue 和 Pull Request 都欢迎。提交前请运行：
 npm test
 ```
 
-如果新增非平凡解析逻辑，请补一个能覆盖真实格式的小测试；不要提交 transcript、凭证或个人项目路径。
+如果新增了不好一眼看懂的解析逻辑，请补一个覆盖真实格式的小测试。不要提交 transcript、凭证或个人项目路径。
 
 <a id="english"></a>
 ## English
 
-**AI Code Usage Tray** is a local-first Windows tray monitor for Claude Code/Desktop and Codex CLI/Desktop. It shows independent 1–90 day token ranges, API-equivalent value, available quota windows (including Claude Fable when provided), prospective per-account usage, reset times, and recent session activity without uploading transcript contents or requiring API keys. Regular Claude Desktop Home chats expose only local session metadata and quota percentages, not exact token details, so their API-equivalent value cannot be calculated.
+**AI Code Usage Tray** is a local-first Windows tray monitor for Claude Code, Claude Desktop, Codex CLI, and Codex Desktop. Each provider can use its own 1-90 day range. The panel shows token totals, standard API-equivalent cost, quota windows, reset times, and recent sessions. If Anthropic returns a Claude Fable window, that is shown too. Per-account totals start from the first day you turn that tracker on. Older usage stays in the overall totals only.
 
-Download the portable x64 executable from [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest), or clone the repository and run `npm ci`, `npm test`, and `npm start`. See the [Privacy Policy](PRIVACY.md) and [Code signing policy](#code-signing-policy).
+It reads data the clients already wrote on disk. It does not upload transcripts, prompts, or session titles, and it does not need an API key. Regular Claude Desktop Home chats only have local session metadata and quota percentages, so they cannot be included in the cost total. Connecting a Claude account makes quota and reset times more accurate. It does not fill in Home-chat tokens.
+
+Download the portable x64 build from [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest), or clone the repo and run `npm ci`, `npm test`, and `npm start`. See the [Privacy Policy](PRIVACY.md) and [Code signing policy](#code-signing-policy).
 
 ## License
 
