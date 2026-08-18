@@ -581,9 +581,9 @@
       }
     });
 
-    document.documentElement.addEventListener('mouseenter', () => clearTimeout(closeTimer));
-    document.documentElement.addEventListener('mouseleave', () => {
-      closeTimer = setTimeout(() => window.api.closePanel(), 300);
+    window.addEventListener('mouseover', () => clearTimeout(closeTimer));
+    window.addEventListener('mouseout', (event) => {
+      if (!event.relatedTarget) closeTimer = setTimeout(() => window.api.closePanel(), 300);
     });
 
     window.api.onUsage((usage) => { latest = usage; render(); });

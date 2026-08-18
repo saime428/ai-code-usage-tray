@@ -579,6 +579,7 @@ async function collectAllUsage() {
     claude: collectedProvider('claude', local && local.claude, localError, collectedAt, ranges.claude),
     codex: collectedProvider('codex', local && local.codex, localError, collectedAt, ranges.codex),
   };
+  snapshot.codex.authMode = identitiesAfter.codex?.authMode || identitiesBefore.codex?.authMode || '';
   if (local && accountLedger) {
     const today = dayKey(new Date(collectedAt));
     let changed = false;

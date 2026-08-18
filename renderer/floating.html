@@ -169,8 +169,9 @@
       const info = providerInfo[provider];
       return `<svg class="brand ${info.logoClass}" aria-hidden="true"><use href="provider-logos.svg#${info.logo}"></use></svg>`;
     };
-    const windowsFor = (provider, usage) =>
-      provider === 'claude'
+    const windowsFor = (provider, usage) => {
+      if (provider === 'codex' && ['api', 'apikey'].includes(usage.authMode)) return [];
+      return provider === 'claude'
         ? [
             ['5h', usage.rateLimits && usage.rateLimits.fiveHour],
             ['7d', usage.rateLimits && usage.rateLimits.sevenDay],
@@ -180,6 +181,7 @@
             ['5h', usage.rateLimits && usage.rateLimits.windows.find((value) => value.windowMinutes === 300)],
             ['7d', usage.rateLimits && usage.rateLimits.windows.find((value) => value.windowMinutes === 10080)],
           ].filter(([, value]) => value);
+    };
     const isStale = (usage) =>
       usage.dataStatus?.state !== 'ok' || Boolean(usage.rateLimits && usage.rateLimits.stale);
     const tokenValue = (value) => Number.isFinite(value) ? Math.max(0, value) : 0;
