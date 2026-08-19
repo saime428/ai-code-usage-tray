@@ -17,7 +17,8 @@
     "test": "node --test lib/usage.test.js",
     "usage": "node scripts/print-usage.js",
     "icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-icon.ps1",
-    "dist": "npm test && electron-builder --win portable --x64"
+    "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-desktop-shortcut.ps1",
+    "dist": "npm test && electron-builder --win portable --x64 && npm run shortcut"
   },
   "devDependencies": {
     "electron": "43.2.0",
