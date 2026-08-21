@@ -652,6 +652,7 @@ function createPanelWindow() {
     show: false,
     frame: false,
     resizable: false,
+    type: 'toolbar',
     skipTaskbar: true,
     alwaysOnTop: true,
     backgroundColor: '#16161a',
@@ -733,6 +734,9 @@ function createFloatingWindow() {
     transparent: true,
     resizable: false,
     focusable: false,
+    // ponytail: type toolbar = WS_EX_TOOLWINDOW，系统级不给任务栏按钮;
+    // 单靠 skipTaskbar 会被反复 showInactive/setAlwaysOnTop 弄失效(Electron 已知问题)
+    type: 'toolbar',
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: false,
