@@ -41,7 +41,7 @@ npm run dist      # 测试后生成 Windows x64 便携版到 dist/
 - [x] **官方额度**:自动读取 Claude Desktop `plan-usage-history.json` 和 Claude Code statusLine,校验后取最新来源;字段缺失时隐藏,不按 token 猜额度。
 - [x] **Claude 账户连接**:可选浏览器 OAuth,使用 Claude Code 当前固定网页回调并粘贴登录码,令牌仅由本应用加密保存,每 5 分钟读取官方重置时间并自动刷新过期令牌。
 - [x] **Codex 支持**:读取 Desktop/CLI 共用的 `~/.codex/sessions`,展示 token、模型、真实额度窗口和会话来源。
-- [x] **贴边悬浮条**:主屏顶部/右侧可选,5h/7d 收起态、悬停详情、全屏保持显示,与托盘面板共享刷新。
+- [x] **贴边悬浮条**:主屏顶部/右侧可选,5h/7d 收起态、悬停详情,与托盘面板共享刷新。全屏应用时默认自动隐藏(托盘菜单可关):`lib/fullscreen-watch.js` 常驻 PowerShell 轮询 `SHQueryUserNotificationState`,它复用资源管理器的 rude-app 判定:独占全屏、演示模式、以及盖满整个显示器的无边框窗口(游戏的无边框窗口化)都算全屏,普通最大化窗口(任务栏仍可见)不算——实测返回值分别为 2 和 5。v1.0 曾用前台窗口矩形自判,在 f07254a 被移除,原因未记录。
 - [x] **Desktop 会话跳转**:Codex 精确打开 task;Claude 有 bridge id 时精确打开,否则复制标题并唤起客户端;CLI 不启动终端。
 - [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 便携版,中英 README 已完成。
 - [x] **公开发布**:MIT + GitHub 公开仓库 + v1.0.0 Release 已完成；后续再做干净 Windows 验证和社区收录。

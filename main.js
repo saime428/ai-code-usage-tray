@@ -27,6 +27,7 @@ const {
   summarizeAccounts,
 } = require('./lib/account-ledger');
 const { sessionTarget } = require('./lib/open-session');
+const { startFullscreenWatch } = require('./lib/fullscreen-watch');
 const {
   createAuthorization,
   parseAuthorizationCode,
@@ -90,6 +91,7 @@ const CLAUDE_OAUTH_REFRESH_MS = 5 * 60 * 1000;
 const DEFAULT_SETTINGS = {
   floatingEnabled: true,
   floatingPosition: 'top',
+  floatingHideFullscreen: true,
   claudeRangeDays: 1,
   codexRangeDays: 1,
 };
@@ -101,6 +103,8 @@ let quitting = false;
 let panelAnchor = 'tray';
 let floatingExpanded = false;
 let floatingCollapseTimer = null;
+let fullscreenActive = false;
+let fullscreenWatch = null;
 let settings = { ...DEFAULT_SETTINGS };
 let usageSnapshot = null;
 let refreshPromise = null;
@@ -203,6 +207,7 @@ function loadSettings() {
     const saved = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
     settings.floatingEnabled = saved.floatingEnabled !== false;
     settings.floatingPosition = saved.floatingPosition === 'right' ? 'right' : 'top';
+    settings.floatingHideFullscreen = saved.floatingHideFullscreen !== false;
     const legacyRangeDays = normalizeRangeDays(saved.rangeDays);
     settings.claudeRangeDays = normalizeRangeDays(saved.claudeRangeDays, legacyRangeDays);
     settings.codexRangeDays = normalizeRangeDays(saved.codexRangeDays, legacyRangeDays);
@@ -697,10 +702,27 @@ function keepWindowOnTop(win) {
 
 function updateFloatingVisibility() {
   if (!floatingWin || floatingWin.isDestroyed()) return;
-  if (settings.floatingEnabled) {
+  const hiddenByFullscreen = settings.floatingHideFullscreen && fullscreenActive;
+  if (settings.floatingEnabled && !hiddenByFullscreen) {
     floatingWin.showInactive();
     keepWindowOnTop(floatingWin);
   } else floatingWin.hide();
+}
+
+function syncFullscreenWatch() {
+  const wanted =
+    process.platform === 'win32' && settings.floatingEnabled && settings.floatingHideFullscreen;
+  if (wanted && !fullscreenWatch) {
+    fullscreenWatch = startFullscreenWatch((active) => {
+      if (fullscreenActive === active) return;
+      fullscreenActive = active;
+      updateFloatingVisibility();
+    });
+  } else if (!wanted && fullscreenWatch) {
+    fullscreenWatch.stop();
+    fullscreenWatch = null;
+    fullscreenActive = false;
+  }
 }
 
 function setFloatingExpanded(expanded, reduceMotion = false) {
@@ -876,6 +898,15 @@ async function setUsageRange(provider, value) {
 function setFloatingEnabled(enabled) {
   settings.floatingEnabled = Boolean(enabled);
   saveSettings();
+  syncFullscreenWatch();
+  updateFloatingVisibility();
+  updateTrayMenu();
+}
+
+function setFloatingHideFullscreen(enabled) {
+  settings.floatingHideFullscreen = Boolean(enabled);
+  saveSettings();
+  syncFullscreenWatch();
   updateFloatingVisibility();
   updateTrayMenu();
 }
@@ -915,6 +946,13 @@ function quickMenuTemplate(includePaths) {
       type: 'checkbox',
       checked: settings.floatingEnabled,
       click: (item) => setFloatingEnabled(item.checked),
+    },
+    {
+      label: '全屏应用时隐藏悬浮条',
+      type: 'checkbox',
+      checked: settings.floatingHideFullscreen,
+      enabled: settings.floatingEnabled,
+      click: (item) => setFloatingHideFullscreen(item.checked),
     },
     {
       label: '悬浮条位置',
@@ -963,6 +1001,7 @@ app.whenReady().then(() => {
   loadAccountLedger();
   createPanelWindow();
   createFloatingWindow();
+  syncFullscreenWatch();
   tray = new Tray(trayIcon());
   updateTrayMenu();
   tray.on('click', () => togglePanel('tray'));
@@ -1048,6 +1087,10 @@ ipcMain.handle('open-session', async (event, session) => {
 
 app.on('before-quit', () => {
   quitting = true;
+  if (fullscreenWatch) {
+    fullscreenWatch.stop();
+    fullscreenWatch = null;
+  }
   clearTimeout(accountLedgerWriteTimer);
   accountLedgerWriteTimer = null;
   flushAccountLedger();
