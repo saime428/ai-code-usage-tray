@@ -20,7 +20,7 @@
 </p>
 
 > [!NOTE]
-> 面板里的金额是按官方标准 API 价格计算的**等价值**，用来对照消耗快慢。Claude / Codex 订阅不会按这个金额扣费。
+> 面板里 Claude / Codex 的金额是按官方标准 API 价格计算的**等价值**，用来对照消耗快慢，订阅不会按这个金额扣费。Grok 的金额来自 Grok CLI 记录的官方结算值，订阅额度内同样不会另外扣费。
 >
 > Claude Desktop 的普通 Home 聊天，本机只有会话元数据和额度百分比，没有精确 token 明细，所以算不出金额。金额只统计本地有 transcript 的 Claude Code / Cowork 会话。连接 Claude 账户只会让额度和重置时间更准，补不齐 Home 聊天的 token。
 
@@ -28,7 +28,7 @@
 
 | | |
 | --- | --- |
-| **Claude + Codex 一处查看** | Claude Code、Claude Desktop、Codex CLI 和 Codex Desktop 放在同一面板。 |
+| **Claude + Codex + Grok 一处查看** | Claude Code、Claude Desktop、Codex CLI/Desktop 和 Grok CLI 放在同一面板。 |
 | **独立日期范围** | Claude 和 Codex 可以各自选最近 1–90 天，互不影响。 |
 | **额度窗口** | 显示 5h / 7d 使用比例、重置时间和数据更新时间。连上 Claude 账户后，有数据也会显示 Fable 窗口。 |
 | **分账号用量** | 从本机启用分账号统计后，按当前账号累计 Token，更早的记录不计在内。账本由 Windows 加密保存在本地。 |
@@ -57,6 +57,7 @@
 | Claude Desktop Home | `%APPDATA%/Claude/IndexedDB/` | 普通聊天的标题、模型、消息数、最近活动（无 token 明细） |
 | Claude 账户（可选） | Anthropic OAuth 用量接口 | 官方百分比与精确重置时间 |
 | Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | token、额度窗口、模型、会话活动 |
+| Grok CLI | `~/.grok/sessions/**/updates.jsonl` + `~/.grok/logs/unified.jsonl` | 逐轮 token、官方结算金额、订阅周额度、会话活动 |
 
 Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/` 下的同名数据文件。
 

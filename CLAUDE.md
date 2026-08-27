@@ -18,10 +18,11 @@ Claude Code 把每个会话的转录写在 `~/.claude/projects/<目录名>/<sess
 - 定价表在 `lib/usage.js` 的 `PRICES`(2026-07-26 官方标准 API 价快照,5 分钟 cache 写 1.25x、1 小时写 2x、cache 读 0.1x)。订阅用户不按 token 计费,所以 UI 上标注为「等价 API 价值」。
 - Codex Desktop 与 CLI 都把会话写在 `~/.codex/sessions/**/*.jsonl`;`turn_context` 给出模型,`token_count` 给出累计 token 和真实额度窗口。`lib/codex-usage.js` 按相邻累计值做差,同时覆盖两种客户端,并按 GPT-5.6 官方 API 价格计算等价价值。
 - Claude Desktop 会话元数据位于 `%APPDATA%/Claude/claude-code-sessions/**/*.json`;用 `cliSessionId` 关联 transcript,并通过 `claude://resume?session=<cliSessionId>` 直接打开对应会话。
+- Grok CLI 把会话写在 `~/.grok/sessions/<url编码cwd>/<会话id>/`:`updates.jsonl` 的 `turn_completed` 事件带**逐轮** token(`modelUsage` 按模型细分)和官方结算费用 `costUsdTicks`(1 USD = 10^10 ticks,含缓存折扣,不需要本地价格表);`summary.json` 带标题/模型/cwd/活动时间。`~/.grok/logs/unified.jsonl` 里 CLI 自己记录 `billing: fetched credits config`,含订阅周额度百分比、周期起止和套餐名——这是 2026-08-17 调研文档认为"没有公开 API"的 SuperGrok 额度,CLI 落了本地盘就能直接读。
 
 ## 架构
 
-- `lib/usage.js` / `lib/codex-usage.js` — 纯 Node 数据层,无 Electron 依赖,分别返回今日按模型聚合 + 24h 会话列表。
+- `lib/usage.js` / `lib/codex-usage.js` / `lib/grok-usage.js` — 纯 Node 数据层,无 Electron 依赖,分别返回今日按模型聚合 + 24h 会话列表。
 - `main.js` — Electron 主进程:托盘图标、原生注意提醒、完整面板、顶部/右侧悬浮条、共享 30s 快照、安全桌面深链和 Claude OAuth 加密存储。
 - `lib/claude-oauth.js` — Claude 浏览器 PKCE 授权（固定网页回调 + 手动粘贴登录码）、令牌刷新和官方额度响应解析；令牌本身由主进程通过 Electron `safeStorage` 保存。
 - `preload.js` + `renderer/index.html` / `floating.html` — contextBridge 暴露最小 IPC,两套无框架 UI 共用同一份用量快照。
@@ -41,6 +42,7 @@ npm run dist      # 测试后生成 Windows x64 便携版到 dist/
 - [x] **官方额度**:自动读取 Claude Desktop `plan-usage-history.json` 和 Claude Code statusLine,校验后取最新来源;字段缺失时隐藏,不按 token 猜额度。
 - [x] **Claude 账户连接**:可选浏览器 OAuth,使用 Claude Code 当前固定网页回调并粘贴登录码,令牌仅由本应用加密保存,每 5 分钟读取官方重置时间并自动刷新过期令牌。
 - [x] **Codex 支持**:读取 Desktop/CLI 共用的 `~/.codex/sessions`,展示 token、模型、真实额度窗口和会话来源。
+- [x] **Grok 支持**:读取 `~/.grok/sessions` 的逐轮用量和官方结算费用,以及本地日志里的订阅周额度;暂不接分账号账本(缺身份识别)和会话跳转(CLI 无深链)。
 - [x] **贴边悬浮条**:主屏顶部/右侧可选,5h/7d 收起态、悬停详情,与托盘面板共享刷新。全屏应用时默认自动隐藏(托盘菜单可关):`lib/fullscreen-watch.js` 常驻 PowerShell 轮询 `SHQueryUserNotificationState`,它复用资源管理器的 rude-app 判定:独占全屏、演示模式、以及盖满整个显示器的无边框窗口(游戏的无边框窗口化)都算全屏,普通最大化窗口(任务栏仍可见)不算——实测返回值分别为 2 和 5。v1.0 曾用前台窗口矩形自判,在 f07254a 被移除,原因未记录。
 - [x] **Desktop 会话跳转**:Codex 精确打开 task;Claude 有 bridge id 时精确打开,否则复制标题并唤起客户端;CLI 不启动终端。
 - [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 便携版,中英 README 已完成。

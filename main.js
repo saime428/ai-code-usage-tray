@@ -18,6 +18,7 @@ const { execFile, execFileSync } = require('child_process');
 const { Worker } = require('worker_threads');
 const { DEFAULT_ROOT } = require('./lib/usage');
 const { DEFAULT_CODEX_ROOT } = require('./lib/codex-usage');
+const { DEFAULT_GROK_ROOT } = require('./lib/grok-usage');
 const { dayKey, normalizeRangeDays, rangeBounds } = require('./lib/range');
 const { detectIdentities } = require('./lib/account-identity');
 const {
@@ -75,7 +76,7 @@ if (process.env.AI_CODE_USAGE_WORKER_SMOKE === '1') {
     process.stderr.write(`WORKER_ERROR ${String(error.stack || error)}\n`);
     app.exit(1);
   });
-  worker.postMessage({ id: 1, ranges: { claude: 1, codex: 1 }, now: Date.now() });
+  worker.postMessage({ id: 1, ranges: { claude: 1, codex: 1, grok: 1 }, now: Date.now() });
   return;
 }
 
@@ -83,8 +84,8 @@ const systemFetch = (...args) => net.fetch(...args);
 
 const PANEL = { width: 380, height: 544 };
 const FLOATING_SIZE = {
-  top: { collapsed: [360, 42], expanded: [440, 224] },
-  right: { collapsed: [58, 246], expanded: [326, 368] },
+  top: { collapsed: [444, 42], expanded: [652, 224] },
+  right: { collapsed: [58, 324], expanded: [326, 480] },
 };
 const FLOATING_COLLAPSE_MS = 300;
 const CLAUDE_OAUTH_REFRESH_MS = 5 * 60 * 1000;
@@ -94,6 +95,7 @@ const DEFAULT_SETTINGS = {
   floatingHideFullscreen: true,
   claudeRangeDays: 1,
   codexRangeDays: 1,
+  grokRangeDays: 1,
 };
 const LOGIN_ITEM_PATH = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
 let tray = null;
@@ -211,6 +213,7 @@ function loadSettings() {
     const legacyRangeDays = normalizeRangeDays(saved.rangeDays);
     settings.claudeRangeDays = normalizeRangeDays(saved.claudeRangeDays, legacyRangeDays);
     settings.codexRangeDays = normalizeRangeDays(saved.codexRangeDays, legacyRangeDays);
+    settings.grokRangeDays = normalizeRangeDays(saved.grokRangeDays, 1);
   } catch {
     settings = { ...DEFAULT_SETTINGS };
   }
@@ -564,6 +567,7 @@ async function collectAllUsage() {
   const ranges = {
     claude: settings.claudeRangeDays,
     codex: settings.codexRangeDays,
+    grok: settings.grokRangeDays,
   };
   const identitiesBefore = detectIdentities();
   const appRunning = isClaudeDesktopRunning();
@@ -583,6 +587,7 @@ async function collectAllUsage() {
     ranges,
     claude: collectedProvider('claude', local && local.claude, localError, collectedAt, ranges.claude),
     codex: collectedProvider('codex', local && local.codex, localError, collectedAt, ranges.codex),
+    grok: collectedProvider('grok', local && local.grok, localError, collectedAt, ranges.grok),
   };
   snapshot.codex.authMode = identitiesAfter.codex?.authMode || identitiesBefore.codex?.authMode || '';
   if (local && accountLedger) {
@@ -602,7 +607,8 @@ async function collectAllUsage() {
     }
     if (changed) scheduleAccountLedgerWrite();
   }
-  for (const provider of ['claude', 'codex']) {
+  // ponytail: Grok 暂不接分账号账本(缺身份识别),accounts 为空时面板自动隐藏该区
+  for (const provider of ['claude', 'codex', 'grok']) {
     delete snapshot[provider].daily;
     snapshot[provider].accounts = accountLedger
       ? { ...summarizeAccounts(accountLedger, provider, ranges[provider], new Date(collectedAt)), error: accountLedgerError }
@@ -821,8 +827,8 @@ function togglePanel(anchor = 'tray') {
 
 function updateTray(snapshot) {
   if (!tray) return;
-  const { claude, codex } = snapshot;
-  const working = [...claude.sessions, ...codex.sessions].filter((session) => session.state === 'working').length;
+  const { claude, codex, grok } = snapshot;
+  const working = [...claude.sessions, ...codex.sessions, ...grok.sessions].filter((session) => session.state === 'working').length;
   const attention = claude.sessions.filter((session) => session.state === 'attention');
   const nextAttention = new Set(attention.map((session) => session.sessionId));
   if (Notification.isSupported()) {
@@ -849,6 +855,7 @@ function updateTray(snapshot) {
     .join(' · ');
   const claudeWindows = claude.rateLimits;
   const codexWindows = (codex.rateLimits && codex.rateLimits.windows) || [];
+  const grokWindows = (grok.rateLimits && grok.rateLimits.windows) || [];
   const rangeLabel = (usage) => usage.rangeDays === 1 ? '今日' : `${usage.rangeDays}天`;
   const windowText = (label, value) => (value ? ` · ${label} ${Math.round(value.usedPercentage)}%` : '');
   tray.setToolTip(
@@ -859,6 +866,9 @@ function updateTray(snapshot) {
       `\nCodex (${rangeLabel(codex)}): ${fmtTokens(codex.totals.output)} out · ≈$${codex.costUSD.toFixed(2)}` +
       windowText('5h', codexWindows.find((value) => value.windowMinutes === 300)) +
       windowText('7d', codexWindows.find((value) => value.windowMinutes === 10080)) +
+      `
+Grok (${rangeLabel(grok)}): ${fmtTokens(grok.totals.output)} out · ≈$${grok.costUSD.toFixed(2)}` +
+      windowText('7d', grokWindows.find((value) => value.windowMinutes === 10080)) +
       (states ? ` · ${states}` : ''),
   );
 }
@@ -886,7 +896,7 @@ function refreshUsage() {
 }
 
 async function setUsageRange(provider, value) {
-  if (!['claude', 'codex'].includes(provider)) throw new RangeError('未知的用量来源');
+  if (!['claude', 'codex', 'grok'].includes(provider)) throw new RangeError('未知的用量来源');
   const rangeDays = normalizeRangeDays(value, null);
   if (!rangeDays) throw new RangeError('统计天数必须是 1 到 90 的整数');
   settings[`${provider}RangeDays`] = rangeDays;
@@ -977,6 +987,7 @@ function quickMenuTemplate(includePaths) {
       { type: 'separator' },
       { label: '打开 Claude 会话目录', click: () => shell.openPath(DEFAULT_ROOT) },
       { label: '打开 Codex 会话目录', click: () => shell.openPath(DEFAULT_CODEX_ROOT) },
+      { label: '打开 Grok 会话目录', click: () => shell.openPath(path.join(DEFAULT_GROK_ROOT, 'sessions')) },
     );
   }
   items.push(

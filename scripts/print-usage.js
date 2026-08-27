@@ -79,3 +79,33 @@ for (const s of c.sessions.slice(0, 10)) {
   const mins = Math.round((Date.now() - s.mtime) / 60000);
   console.log(`  ${s.state === 'working' ? '●' : '○'} ${s.project}  (${s.client}, ${s.state}, ${mins}m ago)`);
 }
+
+const { collectGrokUsage } = require('../lib/grok-usage');
+const g = collectGrokUsage();
+console.log(`\nGrok usage — ${g.date}\n`);
+const grokRows = Object.entries(g.byModel).map(([model, b]) => ({
+  model,
+  turns: b.requests,
+  input: b.input,
+  output: b.output,
+  cacheRead: b.cacheRead,
+  reasoning: b.reasoning,
+  'real.$': +b.costUSD.toFixed(4),
+}));
+if (grokRows.length) {
+  console.table(grokRows);
+  console.log(`TOTAL  ≈$${g.costUSD.toFixed(2)} (official billed value)`);
+} else console.log('No usage recorded today.');
+const grokLimits = (g.rateLimits && g.rateLimits.windows) || [];
+if (grokLimits.length) {
+  console.log(
+    `Limits  ${grokLimits
+      .map((limit) => `${limit.windowMinutes}m=${Math.round(limit.usedPercentage)}%`)
+      .join('  ')}${g.rateLimits.planType ? `  (${g.rateLimits.planType})` : ''}`,
+  );
+}
+console.log(`\nSessions in last 24h: ${g.sessions.length}`);
+for (const s of g.sessions.slice(0, 10)) {
+  const mins = Math.round((Date.now() - s.mtime) / 60000);
+  console.log(`  ${s.state === 'working' ? '●' : '○'} ${s.project}  (${s.client}, ${s.state}, ${mins}m ago)`);
+}

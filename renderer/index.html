@@ -206,7 +206,7 @@
 <body>
   <div class="wrap">
     <h1>
-      <span><button class="engine active" data-engine="claude" aria-pressed="true">Claude</button> / <button class="engine" data-engine="codex" aria-pressed="false">Codex</button></span>
+      <span><button class="engine active" data-engine="claude" aria-pressed="true">Claude</button> / <button class="engine" data-engine="codex" aria-pressed="false">Codex</button> / <button class="engine" data-engine="grok" aria-pressed="false">Grok</button></span>
       <span class="range-meta"><label class="range-control">最近 <input id="range-days" type="number" min="1" max="90" step="1" inputmode="numeric" aria-label="最近统计天数" /> 天</label><span class="date" id="date"></span></span>
     </h1>
     <div class="cost-label" id="cost-label">今日等价值</div>
@@ -281,7 +281,7 @@
       if (document.activeElement !== rangeInput) rangeInput.value = rangeDays;
       rangeInput.disabled = rangeBusy;
       document.getElementById('date').textContent = usage.date;
-      document.getElementById('cost-label').textContent = `${rangeLabel}等价值`;
+      document.getElementById('cost-label').textContent = `${rangeLabel}${selected === 'grok' ? '金额' : '等价值'}`;
       document.getElementById('cost').textContent = costText(usage, isClaude, unknown);
       document.getElementById('totals').textContent = costUnavailable
         ? desktopChatDetected
@@ -416,7 +416,9 @@
         isClaude && usage.rateLimits?.source === 'desktop' ? '≈ 重置时间由 Claude Desktop 本地采样推算，约有 5 分钟误差' : '',
       ].filter(Boolean);
       document.getElementById('note').innerHTML =
-        `${provider} 标准 API 等价值（订阅用户不会按此金额计费）· 价格快照 ${esc(usage.priceSnapshot || '未知')} · 每 30 秒刷新。` +
+        (selected === 'grok'
+          ? 'Grok CLI 记录的官方结算金额（订阅额度内不会另外扣费）· 每 30 秒刷新。'
+          : `${provider} 标准 API 等价值（订阅用户不会按此金额计费）· 价格快照 ${esc(usage.priceSnapshot || '未知')} · 每 30 秒刷新。`) +
         (warnings.length ? `<br><span class="warning">${esc(warnings.join('；'))}</span>` : '');
     }
 
@@ -545,7 +547,7 @@
       input.setCustomValidity('');
       if (latest && rangeDays === latest[provider].rangeDays) return;
       rangeBusy = true;
-      document.getElementById('feedback').textContent = `正在统计 ${provider === 'claude' ? 'Claude' : 'Codex'} 最近 ${rangeDays} 天…`;
+      document.getElementById('feedback').textContent = `正在统计 ${{ claude: 'Claude', codex: 'Codex', grok: 'Grok' }[provider]} 最近 ${rangeDays} 天…`;
       render();
       try {
         latest = await window.api.setUsageRange(provider, rangeDays);

@@ -65,6 +65,7 @@
     .brand { width: 20px; height: 20px; flex: none; fill: currentColor; }
     .brand.claude { color: var(--claude); }
     .brand.openai { color: #f2f0ed; }
+    .brand.grok { color: #f2f0ed; }
     .metrics { display: flex; align-items: baseline; gap: 7px; font-variant-numeric: tabular-nums; }
     .metric { color: #d4d2cf; white-space: nowrap; }
     .metric b { margin-right: 2px; color: var(--muted); font-size: 10px; font-weight: 600; }
@@ -77,7 +78,7 @@
       display: grid;
       padding: 8px;
       gap: 8px;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       opacity: 0;
       visibility: hidden;
       transform: translateY(-4px) scale(.985);
@@ -126,15 +127,15 @@
     .token-total { color: #d4d2cf; font-size: 13px; font-weight: 700; }
     .token-total small { margin-right: 4px; color: var(--muted); font-size: 10px; font-weight: 600; }
     .token-breakdown { margin-top: 3px; color: var(--muted); font-size: 10px; }
-    body.position-top #surface { top: 2px; left: 50%; width: 436px; height: 220px; clip-path: inset(0 40px 182px 40px round 12px); transform: translateX(-50%); }
-    body.position-top #surface::after { top: 0; left: 40px; width: 356px; height: 38px; }
-    body.position-top .compact { top: 0; left: 40px; width: 356px; height: 38px; }
-    body.position-right #surface { top: 50%; right: 2px; width: 322px; height: 324px; clip-path: inset(41px 0 41px 268px round 12px); transform: translateY(-50%); }
-    body.position-right #surface::after { top: 41px; left: 268px; width: 54px; height: 242px; }
-    body.position-right .compact { top: 41px; left: 268px; width: 54px; height: 242px; flex-direction: column; gap: 14px; padding: 10px 5px; }
+    body.position-top #surface { top: 2px; left: 50%; width: 648px; height: 220px; clip-path: inset(0 104px 182px 104px round 12px); transform: translateX(-50%); }
+    body.position-top #surface::after { top: 0; left: 104px; width: 440px; height: 38px; }
+    body.position-top .compact { top: 0; left: 104px; width: 440px; height: 38px; }
+    body.position-right #surface { top: 50%; right: 2px; width: 322px; height: 402px; clip-path: inset(41px 0 41px 268px round 12px); transform: translateY(-50%); }
+    body.position-right #surface::after { top: 41px; left: 268px; width: 54px; height: 320px; }
+    body.position-right .compact { top: 41px; left: 268px; width: 54px; height: 320px; flex-direction: column; gap: 14px; padding: 10px 5px; }
     body.expanded.position-top #surface,
     body.expanded.position-right #surface { clip-path: inset(0 round 12px); transition: clip-path 400ms cubic-bezier(.23, 1, .32, 1), border-color 180ms ease, background-color 180ms ease; }
-    body.expanded.position-right #surface { height: 364px; }
+    body.expanded.position-right #surface { height: 476px; }
     body.position-right .compact-provider { width: 100%; flex-direction: column; gap: 5px; }
     body.position-right .compact-provider + .compact-provider { padding: 14px 0 0; border-top: 1px solid #303038; border-left: 0; }
     body.position-right .metrics { flex-direction: column; gap: 2px; align-items: center; }
@@ -159,6 +160,7 @@
     const providerInfo = {
       claude: { name: 'Claude', logo: 'claude', logoClass: 'claude' },
       codex: { name: 'Codex', logo: 'openai', logoClass: 'openai' },
+      grok: { name: 'Grok', logo: 'grok', logoClass: 'grok' },
     };
     let latest = null;
     let expanded = false;
@@ -230,7 +232,8 @@
 
     function render() {
       if (!latest) return;
-      document.getElementById('compact').innerHTML = ['claude', 'codex']
+      document.getElementById('compact').innerHTML = ['claude', 'codex', 'grok']
+        .filter((provider) => latest[provider])
         .map((provider) => {
           const usage = latest[provider];
           const windows = windowsFor(provider, usage);
@@ -246,7 +249,8 @@
           </div>`;
         })
         .join('');
-      document.getElementById('details').innerHTML = ['claude', 'codex']
+      document.getElementById('details').innerHTML = ['claude', 'codex', 'grok']
+        .filter((provider) => latest[provider])
         .map((provider) => {
           const info = providerInfo[provider];
           const usage = latest[provider];
@@ -255,7 +259,7 @@
           const stale = isStale(usage);
           return `<section class="provider ${stale ? 'stale' : ''}">
             <div class="provider-head">${logo(provider)}<span class="provider-name">${info.name}</span>
-              <span class="cost"><small>${rangeLabel(usage)}等价值</small> ${costText(provider, usage)}</span></div>
+              <span class="cost"><small>${rangeLabel(usage)}${provider === 'grok' ? '金额' : '等价值'}</small> ${costText(provider, usage)}</span></div>
             ${windows.length ? windows.map(([label, value]) => {
               const pct = Math.round(value.usedPercentage);
               const level = pct >= 95 ? 'danger' : pct >= 80 ? 'warn' : '';
