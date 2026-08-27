@@ -935,6 +935,64 @@ function setFloatingPosition(position) {
   updateTrayMenu();
 }
 
+// 开机自启直接管理 HKCU Run 键:Electron 的登录项 API 在便携版上读写状态
+// 不可靠,而且便携版 exe 文件名带版本号,发新版后旧路径会失效。
+const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+const RUN_VALUE = 'AI Code Usage Tray';
+const LEGACY_RUN_VALUE = 'electron.app.AI Code Usage Tray';
+
+function regRunQuery(name) {
+  try {
+    return execFileSync('reg.exe', ['query', RUN_KEY, '/v', name], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 3000,
+    });
+  } catch {
+    return null;
+  }
+}
+
+function autoLaunchEnabled() {
+  return Boolean(regRunQuery(RUN_VALUE));
+}
+
+function setAutoLaunch(enabled) {
+  try {
+    if (enabled) {
+      execFileSync(
+        'reg.exe',
+        ['add', RUN_KEY, '/v', RUN_VALUE, '/t', 'REG_SZ', '/d', `"${LOGIN_ITEM_PATH}"`, '/f'],
+        { windowsHide: true, timeout: 3000 },
+      );
+    } else {
+      execFileSync('reg.exe', ['delete', RUN_KEY, '/v', RUN_VALUE, '/f'], {
+        windowsHide: true,
+        timeout: 3000,
+      });
+    }
+  } catch {
+    // 注册表被组策略锁住时静默失败,菜单会如实显示真实状态
+  }
+}
+
+function syncAutoLaunch() {
+  if (!app.isPackaged) return;
+  const legacy = regRunQuery(LEGACY_RUN_VALUE);
+  if (legacy) {
+    try {
+      execFileSync('reg.exe', ['delete', RUN_KEY, '/v', LEGACY_RUN_VALUE, '/f'], {
+        windowsHide: true,
+        timeout: 3000,
+      });
+    } catch {
+      // 删不掉就留着,不影响新条目
+    }
+  }
+  // 自愈:老 API 条目或版本号变化的旧路径,统一刷成当前 exe
+  if (legacy || autoLaunchEnabled()) setAutoLaunch(true);
+}
+
 function quickMenuTemplate(includePaths) {
   const items = [
     { label: '打开完整面板', click: () => togglePanel(includePaths ? 'tray' : settings.floatingPosition) },
@@ -942,12 +1000,10 @@ function quickMenuTemplate(includePaths) {
     {
       label: '开机自启',
       type: 'checkbox',
-      checked:
-        app.isPackaged &&
-        app.getLoginItemSettings({ path: LOGIN_ITEM_PATH }).executableWillLaunchAtLogin,
+      checked: app.isPackaged && autoLaunchEnabled(),
       enabled: app.isPackaged,
       click: (item) => {
-        app.setLoginItemSettings({ openAtLogin: item.checked, path: LOGIN_ITEM_PATH });
+        setAutoLaunch(item.checked);
         updateTrayMenu();
       },
     },
@@ -1013,6 +1069,7 @@ app.whenReady().then(() => {
   createPanelWindow();
   createFloatingWindow();
   syncFullscreenWatch();
+  syncAutoLaunch();
   tray = new Tray(trayIcon());
   updateTrayMenu();
   tray.on('click', () => togglePanel('tray'));
