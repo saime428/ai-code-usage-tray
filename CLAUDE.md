@@ -45,7 +45,7 @@ npm run dist      # 测试后生成 Windows x64 便携版到 dist/
 - [x] **Grok 支持**:读取 `~/.grok/sessions` 的逐轮用量和官方结算费用,以及本地日志里的订阅周额度;暂不接分账号账本(缺身份识别)和会话跳转(CLI 无深链)。
 - [x] **贴边悬浮条**:主屏顶部/右侧可选,5h/7d 收起态、悬停详情,与托盘面板共享刷新。全屏应用时默认自动隐藏(托盘菜单可关):`lib/fullscreen-watch.js` 常驻 PowerShell 轮询 `SHQueryUserNotificationState`,它复用资源管理器的 rude-app 判定:独占全屏、演示模式、以及盖满整个显示器的无边框窗口(游戏的无边框窗口化)都算全屏,普通最大化窗口(任务栏仍可见)不算——实测返回值分别为 2 和 5。v1.0 曾用前台窗口矩形自判,在 f07254a 被移除,原因未记录。
 - [x] **Desktop 会话跳转**:Codex 精确打开 task;Claude 有 bridge id 时精确打开,否则复制标题并唤起客户端;CLI 不启动终端。
-- [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 便携版,中英 README 已完成。
+- [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 便携版;README.md 为英文主页,README.zh-CN.md 为中文版,顶部互挂切换链接。
 - [x] **公开发布**:MIT + GitHub 公开仓库 + v1.0.0 Release 已完成；后续再做干净 Windows 验证和社区收录。
 - [ ] 自动更新:首个 GitHub Release 稳定后接入版本检查与下载安装。
 - [ ] 增量读取:按文件记 byte offset,只读新增部分(目前每 30s 全量重读,转录很大时再做)。
