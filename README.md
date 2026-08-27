@@ -82,6 +82,25 @@ The Microsoft Store build of Claude Desktop is detected automatically under `%LO
 
 With the optional Claude CLI hooks installed, working / attention / idle become precise; without them the state falls back to transcript write times. A freshly written transcript overrides a stale hook so a running session never shows an old state. A hook silent for more than 30 minutes falls back to idle.
 
+### Enabling hooks (optional)
+
+The portable build does not include the hook scripts — get the `hooks/` directory from this repository (clone it, or download the two files). Then wire them into `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }]
+  },
+  "statusLine": { "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-rate-limits.js" }
+}
+```
+
+`report-status.js` writes per-session states to `~/.claude/usage-tray-status/` and always exits fast, so it never slows Claude Code down. `report-rate-limits.js` uses the statusLine slot to capture official rate limits and prints nothing. Claude Code has a single statusLine slot — if you already use one, keep yours and skip that part; session states work without it. New sessions pick the hooks up automatically.
+
 ## Privacy and security
 
 - No transcripts, prompts, project paths or session titles are uploaded.
@@ -93,7 +112,7 @@ With the optional Claude CLI hooks installed, working / attention / idle become 
 ## Code signing policy
 
 - Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-- SignPath-signed releases will be built from this repository by [GitHub Actions](.github/workflows/ci.yml) and manually approved before signing. v1.0.1 and earlier remain unsigned.
+- SignPath-signed releases will be built from this repository by [GitHub Actions](.github/workflows/ci.yml) and manually approved before signing. All releases to date remain unsigned; signing starts once the SignPath Foundation approval completes.
 - Committer, reviewer, and approver: [@saime428](https://github.com/saime428).
 - Privacy policy: [PRIVACY.md](PRIVACY.md).
 
@@ -108,6 +127,7 @@ cd ai-code-usage-tray
 npm ci
 npm test
 npm start
+npm run usage   # print today's usage in the terminal, no Electron needed
 ```
 
 Build the Windows x64 portable executable:
@@ -146,6 +166,7 @@ Bump the version in `package.json`, launch the portable build on a clean Windows
 
 - Windows x64 only.
 - No auto-update yet.
+- The app UI is currently Chinese-only.
 - The portable build is not code-signed yet. The SignPath Foundation application and signing automation are in progress.
 - Claude OAuth may be rate-limited by Anthropic or affected by your network egress. Local inference is unaffected.
 - Regular Claude Desktop Home chats expose no token detail, so only session state and quota percentages can be shown — no cost.

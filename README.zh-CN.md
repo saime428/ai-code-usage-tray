@@ -81,6 +81,25 @@ Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Clau
 
 给 Claude CLI 配上 hooks 后，工作中 / 需处理 / 空闲会更准；没配时按会话文件的写入时间判断。新写入的 transcript 会覆盖过期 hook，避免会话还在跑却显示旧状态。hook 超过 30 分钟没更新，会改回空闲。
 
+### 启用 hooks（可选）
+
+便携版不包含 hooks 脚本——请从本仓库获取 `hooks/` 目录（克隆仓库或单独下载那两个文件），然后挂到 `~/.claude/settings.json`：
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-status.js" }] }]
+  },
+  "statusLine": { "type": "command", "command": "node C:/path/to/ai-code-usage-tray/hooks/report-rate-limits.js" }
+}
+```
+
+`report-status.js` 把每个会话的状态写到 `~/.claude/usage-tray-status/`，永远快速退出，不会拖慢 Claude Code。`report-rate-limits.js` 占用 statusLine 槽位捕获官方额度，不输出任何内容。Claude Code 只有一个 statusLine 槽位——如果你已经在用别的 statusLine，保留你自己的并跳过这部分即可，会话状态不依赖它。新会话会自动生效。
+
 ## 隐私与安全
 
 - 不上传 transcript、提示词、项目路径或会话标题。
@@ -92,7 +111,7 @@ Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Clau
 ## Code signing policy
 
 - Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-- SignPath-signed releases will be built from this repository by [GitHub Actions](.github/workflows/ci.yml) and manually approved before signing. v1.0.1 and earlier remain unsigned.
+- SignPath-signed releases will be built from this repository by [GitHub Actions](.github/workflows/ci.yml) and manually approved before signing. All releases to date remain unsigned; signing starts once the SignPath Foundation approval completes.
 - Committer, reviewer, and approver: [@saime428](https://github.com/saime428).
 - Privacy policy: [PRIVACY.md](PRIVACY.md).
 
@@ -106,6 +125,7 @@ cd ai-code-usage-tray
 npm ci
 npm test
 npm start
+npm run usage   # 终端打印今日用量，不启动 Electron
 ```
 
 生成 Windows x64 便携版：
