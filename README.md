@@ -41,6 +41,15 @@
 | **Zero API keys** | Local mode needs no API key. Claude OAuth is optional, for more accurate quotas. |
 
 <a id="quick-start"></a>
+## What's new (v1.2.1)
+
+- **The price table was re-verified end to end.** Sonnet 5 and the whole GPT-5.6 family now use current official rates, and Claude Fable 5.1 / Mythos 5.1 read cache at 0.025x instead of a flat 0.1x. **If you use Fable 5.1 heavily the cost shown drops noticeably — that is the correction, not lost data.**
+- **Model resolution fixes.** Longest-prefix matching, so `claude-opus-4` no longer shadows `claude-opus-4-5` and `gpt-5.5` no longer shadows `gpt-5.5-pro` (which had been billing 6x under). Bedrock and Vertex model ids are recognised; those sessions previously showed a cost of zero.
+- **Missing multipliers added**: Opus 5 fast mode (2x), `inference_geo: "us"` (1.1x), and the Bedrock regional profile premium (10%).
+- **New `npm run check-prices`**, run weekly by GitHub Actions so a stale table gets reported instead of quietly drifting. See [Updating the price table](#updating-the-price-table).
+
+Older versions are listed under [Releases](https://github.com/saime428/ai-code-usage-tray/releases).
+
 ## Quick start
 
 1. Open [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest).
@@ -194,7 +203,7 @@ npm run dist
 git status --short
 ```
 
-If `check-prices` reports drift, confirm it against the official pricing pages and update the table and `PRICE_SNAPSHOT` first. Bump the version in `package.json`, launch the portable build on a clean Windows machine, then create a GitHub Release with the `.exe` and its SHA-256.
+If `check-prices` reports drift, confirm it against the official pricing pages and update the table and `PRICE_SNAPSHOT` first. Bump the version in `package.json`, refresh the "What's new" section at the top of both READMEs, launch the portable build on a clean Windows machine, then create a GitHub Release with the `.exe` and its SHA-256.
 
 ## Current limitations
 

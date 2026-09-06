@@ -40,6 +40,15 @@
 | **本地优先** | 默认只读本机客户端已经写下的数据，不上传提示词或会话内容。 |
 | **零 API Key** | 本地模式不需要 API Key。Claude OAuth 是可选项，用来读更准的额度。 |
 
+## 最新更新（v1.2.1）
+
+- **价格表全面核对**。Sonnet 5 和 GPT-5.6 全系按官方现价重算；Claude Fable 5.1 / Mythos 5.1 的缓存读取改为 0.025x（此前统一按 0.1x）。**重度使用 Fable 5.1 的话金额会明显下降——这是修正，不是数据丢失。**
+- **模型识别修正**。改为最长前缀匹配：`claude-opus-4` 不再吞掉 `claude-opus-4-5`，`gpt-5.5` 不再吞掉 `gpt-5.5-pro`（后者此前少算 6 倍）。新增 Bedrock / Vertex 形式的模型 id 识别，这类会话此前金额显示为 0。
+- **补齐倍率**：Opus 5 快速模式 2x、`inference_geo: "us"` 1.1x、Bedrock 区域配置 10% 加价。
+- **新增 `npm run check-prices`**，GitHub Actions 每周一自动比对价格表，过期就通知。见[更新价格表](#更新价格表)。
+
+历史版本见 [Releases](https://github.com/saime428/ai-code-usage-tray/releases)。
+
 ## 快速开始
 
 1. 打开 [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest)。
@@ -192,7 +201,7 @@ npm run dist
 git status --short
 ```
 
-如果 `check-prices` 报告差异，先到官方价格页确认，更新价格表和 `PRICE_SNAPSHOT`。更新 `package.json` 版本，在干净的 Windows 环境里启动便携版，再创建 GitHub Release，上传 `.exe` 和 SHA-256。
+如果 `check-prices` 报告差异，先到官方价格页确认，更新价格表和 `PRICE_SNAPSHOT`。更新 `package.json` 版本和 README 顶部的「最新更新」小节，在干净的 Windows 环境里启动便携版，再创建 GitHub Release，上传 `.exe` 和 SHA-256。
 
 ## 当前限制
 
