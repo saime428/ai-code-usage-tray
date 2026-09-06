@@ -14,6 +14,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "prestart": "node -e \"if(require('fs').existsSync('node_modules/electron/dist/resources/app.asar'))throw new Error('node_modules/electron/dist/resources/app.asar exists: electron . would run it instead of this working tree')\"",
     "test": "node --test lib/usage.test.js",
     "usage": "node scripts/print-usage.js",
     "icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-icon.ps1",

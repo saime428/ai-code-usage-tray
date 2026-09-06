@@ -63,4 +63,5 @@ npm run dist      # 测试后生成 Windows x64 便携版到 dist/
   checker 两遍:第一遍把每种 token 各 10 万个喂进真正的 `costOf` 跟上游费率对,这样 cache 读写倍率也一起验了(重新声明常量去比会漏);第二遍扫上游所有 id,凡是 `priceFor` 能解析但价格对不上的就报——`gpt-5.5-pro` 前缀命中 `gpt-5.5` 少算 6 倍就是这么抓出来的,`unknownModels` 和第一遍都看不见这类。上游 key 全改名导致一个都没验到时会直接 exit 1,避免绿灯空跑。
   已知不建模:Claude 的 >200K 长上下文档位(只有 Sonnet 4.5/4 有,2x/1.5x),checker 会持续把它列在"unmodeled"一栏免得反复重新发现;Codex 的 272K 档位**是**建模了的。
   真实转录里 checker 覆盖不到的:`<synthetic>` token 全 0(已被现有零值判断跳过)、Codex 的 `codex-auto-review` 和 `gpt-5.3-codex-spark` 上游无 API 价。注意 `opus`/`fable` 这类裸别名只出现在 Task 工具调用参数里,**不是** `message.model`——查的时候别用整行 grep `"model":"..."`,会把嵌套参数一起捞进来。
+- **`npm start` 有个能吞掉一整天的坑**:Electron 启动时若发现 `node_modules/electron/dist/resources/app.asar`,会直接运行它并**忽略 `.` 参数**——正常安装那里只有 `default_app.asar`。2026-07-28 某次打包把 v1.0.1 的 `app.asar`(和 `elevate.exe`)写进了那个目录,之后每次 `npm start` 跑的都是 v1.0.1 而不是工作区,直到 2026-09-06 才因为「改了价格但面板没变、Grok 和天数框都不见了」被发现。`package.json` 的 `prestart` 现在会检查这个文件并拒绝启动;确认 dev 跑的是工作区,看渲染进程命令行里的 `--app-path` 是不是仓库目录。同理:**用 `npm start` 验证过的结论,都要先确认 app-path**,否则冒烟测试可能只是撞了单实例锁退出。
 - 用 Electron 而不是 Tauri:纯 JS 栈好维护,体积大但这是开发者工具,无所谓。
