@@ -154,10 +154,17 @@ async function main() {
 
   console.log('DRIFT — ours → upstream:');
   for (const line of drift) console.log(`  ${line}`);
-  console.log(
-    `\n${drift.length} difference(s). Confirm against the official pricing pages, ` +
-      'update the table, then bump PRICE_SNAPSHOT in both files.',
-  );
+  console.log(`
+${drift.length} difference(s). To fix:
+  1. Confirm each line against the official pages (LiteLLM is community data):
+       https://platform.claude.com/docs/en/about-claude/pricing
+       https://developers.openai.com/api/docs/pricing
+  2. Edit that model's row in the PRICES object of the file named above:
+       lib/usage.js for claude-*, lib/codex-usage.js for gpt-*.
+       Add a row if the model has none (an "unlisted id" line means exactly that).
+       Key = model id without date suffix; the longest matching key wins.
+  3. Set PRICE_SNAPSHOT to today's date in BOTH lib/usage.js and lib/codex-usage.js.
+  4. npm test, then commit. Full write-up: README, "How the cost is computed".`);
   process.exitCode = 1;
 }
 

@@ -79,6 +79,24 @@ Models without a public list price (for example Codex's internal `codex-auto-rev
 
 `npm run check-prices` diffs the table against LiteLLM's community-maintained cost map and reports drift; CI runs it weekly. It only reports: confirm any change against the official pricing pages, edit the table, then bump `PRICE_SNAPSHOT`.
 
+#### Updating the price table
+
+Everything is in two files; nothing else needs to change.
+
+| What | Where |
+| --- | --- |
+| Claude prices | `lib/usage.js` → the `PRICES` object. One row per model, USD per million tokens: `'claude-opus-5': { input: 5, output: 25 }`. Optional fields: `cacheRead` (cache-hit multiplier, default 0.1), `fast` (fast-mode multiplier), `legacy: true` (retired model, exempt from the Bedrock regional premium). |
+| Codex prices | `lib/codex-usage.js` → the `PRICES` object: `'gpt-5.6-sol': { input: 4, cachedInput: 0.4, output: 20 }`. |
+| Snapshot date | The `PRICE_SNAPSHOT` constant near the top of **both** files. The panel footer shows this date. |
+
+Row keys are the model id **without** a date suffix (`claude-opus-5`, not `claude-opus-5-20260514`). `priceFor` matches by prefix and the longest key wins, so `claude-opus-4` and `claude-opus-4-5` coexist. A model that only exists as a longer sibling of an existing key (`gpt-5.5-pro` next to `gpt-5.5`) needs its own row, or it silently takes the shorter key's price — `npm run check-prices` reports that as an `unlisted id` line.
+
+1. `npm run check-prices` — each difference prints as `file  model  field  ours → upstream`.
+2. Confirm against the official pages: [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), [OpenAI pricing](https://developers.openai.com/api/docs/pricing). LiteLLM is community data and occasionally contradicts itself.
+3. Edit the row(s), set `PRICE_SNAPSHOT` in both files to today's date, run `npm test`, commit.
+
+**How you find out.** The `prices` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs every Monday 06:17 UTC and fails on drift. GitHub sends the failure notification to the account whose commit last changed the `cron:` line of that file — by email and/or on the web, per [Settings → Notifications → Actions](https://github.com/settings/notifications) (make sure Actions notifications are on there; "failed workflows only" is enough). You can also run it any time from the Actions tab with **Run workflow**. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab if that happens.
+
 ### Reset times and refresh cadence
 
 - The app re-reads local data every **30 seconds**.

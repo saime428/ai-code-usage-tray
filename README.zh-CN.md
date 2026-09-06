@@ -78,6 +78,24 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（
 
 `npm run check-prices` 会拿这张表和 LiteLLM 社区维护的价格表比对并报告差异，CI 每周跑一次。它只报告不改写：发现差异后到官方价格页确认，改表，再更新 `PRICE_SNAPSHOT`。
 
+#### 更新价格表
+
+只涉及两个文件，别的都不用动。
+
+| 改什么 | 在哪 |
+| --- | --- |
+| Claude 价格 | `lib/usage.js` 里的 `PRICES` 对象。一个型号一行，单位是每百万 token 的美元：`'claude-opus-5': { input: 5, output: 25 }`。可选字段：`cacheRead`（缓存命中倍率，默认 0.1）、`fast`（快速模式倍率）、`legacy: true`（退役型号，不吃 Bedrock 区域加价）。 |
+| Codex 价格 | `lib/codex-usage.js` 里的 `PRICES` 对象：`'gpt-5.6-sol': { input: 4, cachedInput: 0.4, output: 20 }`。 |
+| 快照日期 | **两个文件**顶部附近的 `PRICE_SNAPSHOT` 常量。面板底部显示的就是它。 |
+
+行的 key 是**不带日期后缀**的模型 id（写 `claude-opus-5`，不写 `claude-opus-5-20260514`）。`priceFor` 按前缀匹配、最长的 key 胜出，所以 `claude-opus-4` 和 `claude-opus-4-5` 可以共存。如果新型号只是某个已有 key 的更长兄弟（比如 `gpt-5.5` 旁边出了 `gpt-5.5-pro`），必须单独加一行，否则它会静默按短 key 的价算——`npm run check-prices` 会以 `unlisted id` 一行报出来。
+
+1. `npm run check-prices`——每处差异一行：`文件  型号  字段  代码里的值 → 上游的值`。
+2. 到官方页核对：[Anthropic 价格](https://platform.claude.com/docs/en/about-claude/pricing)、[OpenAI 价格](https://developers.openai.com/api/docs/pricing)。LiteLLM 是社区数据，偶尔自相矛盾。
+3. 改对应的行，把两个文件的 `PRICE_SNAPSHOT` 改成当天日期，跑 `npm test`，提交。
+
+**你会怎么知道。** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 里的 `prices` 任务每周一 06:17 UTC 跑一次，有差异就失败。GitHub 会把失败通知发给**最后一次改动该文件 `cron:` 那行的提交者**——邮件还是站内，取决于 [Settings → Notifications → Actions](https://github.com/settings/notifications)（确认那里的 Actions 通知是开着的，只选「失败时」就够）。也可以随时到 Actions 页点 **Run workflow** 手动跑。仓库 60 天没有任何活动时 GitHub 会暂停定时任务，到 Actions 页重新启用即可。
+
 ### 重置时间与刷新频率
 
 - 应用每 **30 秒**重读一次本地数据。
