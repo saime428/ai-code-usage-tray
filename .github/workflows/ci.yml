@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Weekly price-table drift check. Prices move a few times a year; this is the
+    # reminder, since nobody remembers to reread two vendor pricing pages.
+    - cron: '17 6 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -11,6 +15,7 @@ permissions:
 
 jobs:
   windows:
+    if: github.event_name != 'schedule'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,3 +30,17 @@ jobs:
           name: AI-Code-Usage-Tray-win-x64
           path: dist/AI-Code-Usage-Tray-*-win-x64.exe
           if-no-files-found: error
+
+  # Deliberately not part of `npm test` or `npm run dist`: this one needs network,
+  # and neither tests nor offline builds should depend on a third-party repo.
+  # Scheduled only, so a flaky upstream can never redden a pull request.
+  prices:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run check-prices

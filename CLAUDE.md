@@ -56,5 +56,11 @@ npm run dist      # 测试后生成 Windows x64 便携版到 dist/
 - Claude Code 的 `statusLine` 只有一个命令槽;当前本机没有旧配置所以直接占用,发布安装器需检测并串联用户已有命令。
 - Desktop 用量历史是内部 v2 格式;超过 15 分钟后保留最后数据但降低透明度并明确标记过期。
 - Codex 金额是标准 API 等价价值,包含缓存读写和 >272K 长上下文倍率;订阅用户不会按该金额扣费。
-- 定价表是硬编码快照,新模型出来要手动加一行(`priceFor` 用前缀匹配,带日期后缀的 id 自动兼容)。
+- 定价表是硬编码快照,新模型出来要手动加一行(`priceFor` 用前缀匹配,带日期后缀的 id 自动兼容)。两家厂商都只把价格发在 HTML 文档页,`/v1/models` 不带价格字段,所以没有官方接口可抓。`npm run check-prices` 拿 LiteLLM 的 `model_prices_and_context_window.json` 比对现有表并报告偏差(只报告不改写:社区维护的数据改金额显示前要人看一眼),CI 每周一跑一次。2026-09-06 那次核对发现 07-26 的快照抄成了 Sonnet 5「将来会涨到」的价,gpt-5.6-luna 更是高估 5 倍——这类错 `unknownModels` 抓不到,因为模型认识、只是价格错。
+  倍率现在都是表里的数据而不是散在代码里的 if:`cacheRead` 覆盖默认 0.1x(Fable/Mythos 5.1 是 0.025x),`fast` 是快速模式倍率(只有 Opus 5 / 4.8 有,4.7 直接报错、4.6 按标准价跑),`inference_geo: "us"` 再叠 1.1x。`priceFor` **取最长匹配**:`claude-opus-4`(15/75)是 `claude-opus-4-5`(5/25)的前缀,`claude-fable-5` 是 `claude-fable-5-1` 的前缀,先匹配会静默算错 3 倍。表的书写顺序因此不再影响结果——`lib/usage.test.js` 里那条 pricing 测试就是钉这个的。
+  `normalizeModel` 认四种写法:裸 id、`anthropic/xxx`、云推理配置(`us|eu|apac|au|jp|global|us-gov.anthropic.xxx`,注意 `global` 6 个字母、`us-gov` 带连字符,正则别写成 `[a-z]{2,4}`)、Vertex 的 `xxx@20250929`。退役型号(Opus 4.1/4、Sonnet 4、Haiku 3.5)保留在表里,因为旧转录和 Bedrock/Vertex 还会出现。
+  **区域推理配置加价 10%**(官方文档口径,`global.` 不加),`costOf` 按前缀判断;退役型号标 `legacy` 不吃这个加价,因为它们早于该计费方案、而且 Bedrock 对它们是另一套价(Haiku 3.5 在 Bedrock 是 $0.25 不是 $0.80,没建模)。上游数据里 `us-gov` 实测是 1.2x、还有个 `eu.…opus-4-5` 条目跟自己的 `us.` 兄弟自相矛盾——所以 checker 的第二遍**整体跳过区域 id**,它的职责是找缺失的型号行,不是追平台差价。
+  checker 两遍:第一遍把每种 token 各 10 万个喂进真正的 `costOf` 跟上游费率对,这样 cache 读写倍率也一起验了(重新声明常量去比会漏);第二遍扫上游所有 id,凡是 `priceFor` 能解析但价格对不上的就报——`gpt-5.5-pro` 前缀命中 `gpt-5.5` 少算 6 倍就是这么抓出来的,`unknownModels` 和第一遍都看不见这类。上游 key 全改名导致一个都没验到时会直接 exit 1,避免绿灯空跑。
+  已知不建模:Claude 的 >200K 长上下文档位(只有 Sonnet 4.5/4 有,2x/1.5x),checker 会持续把它列在"unmodeled"一栏免得反复重新发现;Codex 的 272K 档位**是**建模了的。
+  真实转录里 checker 覆盖不到的:`<synthetic>` token 全 0(已被现有零值判断跳过)、Codex 的 `codex-auto-review` 和 `gpt-5.3-codex-spark` 上游无 API 价。注意 `opus`/`fable` 这类裸别名只出现在 Task 工具调用参数里,**不是** `message.model`——查的时候别用整行 grep `"model":"..."`,会把嵌套参数一起捞进来。
 - 用 Electron 而不是 Tauri:纯 JS 栈好维护,体积大但这是开发者工具,无所谓。
