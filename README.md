@@ -23,7 +23,7 @@
 </p>
 
 > [!NOTE]
-> For Claude and Codex, the cost shown is an **API-equivalent value** computed from official standard API prices — a way to compare burn rates. Subscriptions are not billed by this amount. Grok's cost comes from the official billed value recorded by Grok CLI; within your subscription quota it does not cost extra either.
+> For Claude and Codex, the cost shown is an **API-equivalent value** computed from official standard API prices (the table's verification date is shown at the bottom of the panel) — a way to compare burn rates. Subscriptions are not billed by this amount. Grok's cost comes from the official billed value recorded by Grok CLI; within your subscription quota it does not cost extra either.
 >
 > Regular Claude Desktop Home chats only leave session metadata and quota percentages on disk, with no token detail, so no cost can be computed for them. Cost only covers Claude Code / Cowork sessions that have a local transcript. Connecting a Claude account improves quota and reset accuracy but cannot fill in Home-chat tokens.
 
@@ -64,6 +64,20 @@
 | Grok CLI | `~/.grok/sessions/**/updates.jsonl` + `~/.grok/logs/unified.jsonl` | per-turn tokens, official billed cost, subscription weekly quota, session activity |
 
 The Microsoft Store build of Claude Desktop is detected automatically under `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/`.
+
+### How the cost is computed
+
+Claude and Codex costs come from a hand-maintained table of official standard API list prices (`lib/usage.js`, `lib/codex-usage.js`), stamped with the date it was last verified — the "price snapshot" date at the bottom of the panel. Neither vendor publishes pricing in a machine-readable form, so the table cannot update itself. What it models:
+
+- Prompt caching: cache write 1.25x (5-minute) / 2x (1-hour), cache read 0.1x — 0.025x on Claude Fable 5.1 and Mythos 5.1.
+- Fast mode (2x) on Opus 5 / 4.8, and `inference_geo: "us"` (1.1x), read from each transcript row.
+- Codex long context (input over 272K: 2x input, 1.5x output).
+- Bedrock and Vertex model ids (`us.anthropic.…`, `name@date`), with the documented 10% regional premium; `global.` profiles at base price.
+- Retired models stay listed so older transcripts still price.
+
+Models without a public list price (for example Codex's internal `codex-auto-review` label) show as "unavailable", are left out of the total, and the total is marked incomplete rather than guessed.
+
+`npm run check-prices` diffs the table against LiteLLM's community-maintained cost map and reports drift; CI runs it weekly. It only reports: confirm any change against the official pricing pages, edit the table, then bump `PRICE_SNAPSHOT`.
 
 ### Reset times and refresh cadence
 
@@ -128,6 +142,7 @@ npm ci
 npm test
 npm start
 npm run usage   # print today's usage in the terminal, no Electron needed
+npm run check-prices   # diff the price table against LiteLLM's cost map
 ```
 
 Build the Windows x64 portable executable:
@@ -156,11 +171,12 @@ hooks/                  optional Claude Code state hooks
 
 ```powershell
 npm test
+npm run check-prices
 npm run dist
 git status --short
 ```
 
-Bump the version in `package.json`, launch the portable build on a clean Windows machine, then create a GitHub Release with the `.exe` and its SHA-256.
+If `check-prices` reports drift, confirm it against the official pricing pages and update the table and `PRICE_SNAPSHOT` first. Bump the version in `package.json`, launch the portable build on a clean Windows machine, then create a GitHub Release with the `.exe` and its SHA-256.
 
 ## Current limitations
 
@@ -171,6 +187,8 @@ Bump the version in `package.json`, launch the portable build on a clean Windows
 - Claude OAuth may be rate-limited by Anthropic or affected by your network egress. Local inference is unaffected.
 - Regular Claude Desktop Home chats expose no token detail, so only session state and quota percentages can be shown — no cost.
 - Grok sessions are CLI-only: no per-account tracking (no identity detection yet) and no click-to-open deep link.
+- Claude's >200K long-context tier (Sonnet 4.5 / 4 only) is priced flat, and Bedrock's own pricing for retired models is not modeled.
+- Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
 
 ## Contributing
 

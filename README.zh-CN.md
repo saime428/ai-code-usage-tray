@@ -23,7 +23,7 @@
 </p>
 
 > [!NOTE]
-> 面板里 Claude / Codex 的金额是按官方标准 API 价格计算的**等价值**，用来对照消耗快慢，订阅不会按这个金额扣费。Grok 的金额来自 Grok CLI 记录的官方结算值，订阅额度内同样不会另外扣费。
+> 面板里 Claude / Codex 的金额是按官方标准 API 价格计算的**等价值**（价格表的核对日期显示在面板底部），用来对照消耗快慢，订阅不会按这个金额扣费。Grok 的金额来自 Grok CLI 记录的官方结算值，订阅额度内同样不会另外扣费。
 >
 > Claude Desktop 的普通 Home 聊天，本机只有会话元数据和额度百分比，没有精确 token 明细，所以算不出金额。金额只统计本地有 transcript 的 Claude Code / Cowork 会话。连接 Claude 账户只会让额度和重置时间更准，补不齐 Home 聊天的 token。
 
@@ -63,6 +63,20 @@
 | Grok CLI | `~/.grok/sessions/**/updates.jsonl` + `~/.grok/logs/unified.jsonl` | 逐轮 token、官方结算金额、订阅周额度、会话活动 |
 
 Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/` 下的同名数据文件。
+
+### 金额是怎么算的
+
+Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（`lib/usage.js`、`lib/codex-usage.js`），表上记着最后一次核对的日期，就是面板底部显示的「价格快照」。两家厂商都不提供机器可读的价格，所以这张表没法自己更新。它建模了：
+
+- 提示缓存：写入 1.25x（5 分钟）/ 2x（1 小时），读取 0.1x——Claude Fable 5.1 / Mythos 5.1 为 0.025x。
+- Opus 5 / 4.8 的快速模式（2x）和 `inference_geo: "us"`（1.1x），逐条从转录里读。
+- Codex 长上下文（输入超过 272K：输入 2x、输出 1.5x）。
+- Bedrock / Vertex 形式的模型 id（`us.anthropic.…`、`名称@日期`），区域配置按官方口径加 10%，`global.` 不加。
+- 退役型号仍保留，旧转录照样能算。
+
+没有公开牌价的型号（比如 Codex 内部的 `codex-auto-review` 标签）会标成「不可用」并排除在合计之外，合计随之标为不完整，而不是猜一个数。
+
+`npm run check-prices` 会拿这张表和 LiteLLM 社区维护的价格表比对并报告差异，CI 每周跑一次。它只报告不改写：发现差异后到官方价格页确认，改表，再更新 `PRICE_SNAPSHOT`。
 
 ### 重置时间与刷新频率
 
@@ -126,6 +140,7 @@ npm ci
 npm test
 npm start
 npm run usage   # 终端打印今日用量，不启动 Electron
+npm run check-prices   # 把价格表和 LiteLLM 价格表比对
 ```
 
 生成 Windows x64 便携版：
@@ -154,11 +169,12 @@ hooks/                   可选 Claude Code 状态 hooks
 
 ```powershell
 npm test
+npm run check-prices
 npm run dist
 git status --short
 ```
 
-更新 `package.json` 版本，在干净的 Windows 环境里启动便携版，再创建 GitHub Release，上传 `.exe` 和 SHA-256。
+如果 `check-prices` 报告差异，先到官方价格页确认，更新价格表和 `PRICE_SNAPSHOT`。更新 `package.json` 版本，在干净的 Windows 环境里启动便携版，再创建 GitHub Release，上传 `.exe` 和 SHA-256。
 
 ## 当前限制
 
@@ -168,6 +184,8 @@ git status --short
 - Claude OAuth 可能被 Anthropic 限流，也可能受当前网络出口影响。本地推算不受影响。
 - Claude Desktop 普通 Home 聊天读不到精确 token 明细，只能显示会话状态和额度百分比，算不出金额。
 - Grok 会话仅有 CLI 一种来源：暂不支持分账号统计（缺身份识别），也没有点击跳转的深链。
+- Claude 超过 200K 的长上下文档位（仅 Sonnet 4.5 / 4 有）按平价计，Bedrock 对退役型号的另一套定价也没有建模。
+- 没有公开牌价的型号（如 `codex-auto-review`）会被排除在合计之外并标出，不做估算。
 
 ## 贡献
 
