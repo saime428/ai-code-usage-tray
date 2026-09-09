@@ -41,7 +41,13 @@
 | **Zero API keys** | Local mode needs no API key. Claude OAuth is optional, for more accurate quotas. |
 
 <a id="quick-start"></a>
-## What's new (v1.2.1)
+## What's new
+
+### v1.2.2
+
+- **Fixed the Grok weekly quota disappearing at the start of a billing period.** xAI omits `creditUsagePercent` when usage is 0, which was read as "no data" and hid the whole quota block until usage crossed 1%. An absent field now means 0%.
+
+### v1.2.1
 
 - **The price table was re-verified end to end.** Sonnet 5 and the whole GPT-5.6 family now use current official rates, and Claude Fable 5.1 / Mythos 5.1 read cache at 0.025x instead of a flat 0.1x. **If you use Fable 5.1 heavily the cost shown drops noticeably — that is the correction, not lost data.**
 - **Model resolution fixes.** Longest-prefix matching, so `claude-opus-4` no longer shadows `claude-opus-4-5` and `gpt-5.5` no longer shadows `gpt-5.5-pro` (which had been billing 6x under). Bedrock and Vertex model ids are recognised; those sessions previously showed a cost of zero.
@@ -214,6 +220,7 @@ If `check-prices` reports drift, confirm it against the official pricing pages a
 - Claude OAuth may be rate-limited by Anthropic or affected by your network egress. Local inference is unaffected.
 - Regular Claude Desktop Home chats expose no token detail, so only session state and quota percentages can be shown — no cost.
 - Grok sessions are CLI-only: no per-account tracking (no identity detection yet) and no click-to-open deep link.
+- The Grok weekly quota comes from what Grok CLI writes to disk: after a billing period rolls over it only reappears the next time you run Grok CLI (2–57 hours in local measurements). It stays hidden during that window — the weekly quota is account-wide, so you may have spent part of it on the web, and a guess would be worse than nothing.
 - Claude's >200K long-context tier (Sonnet 4.5 / 4 only) is priced flat, and Bedrock's own pricing for retired models is not modeled.
 - Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
 
