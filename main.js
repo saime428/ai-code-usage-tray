@@ -29,7 +29,7 @@ const {
 } = require('./lib/account-ledger');
 const { sessionTarget } = require('./lib/open-session');
 const { startFullscreenWatch } = require('./lib/fullscreen-watch');
-const { parseTasklistPids, startHangWatch } = require('./lib/hang-guard');
+const { appendHangLog, parseTasklistPids, startHangWatch } = require('./lib/hang-guard');
 const {
   createAuthorization,
   parseAuthorizationCode,
@@ -127,6 +127,9 @@ let accountLedgerError = null;
 let accountLedgerDirty = false;
 let accountLedgerWriteTimer = null;
 
+// 挂起记录:接管卡死实例的那次启动和看门狗都往这里写。
+const HANG_LOG = path.join(app.getPath('userData'), 'hang-log.jsonl');
+
 // 卡死的主实例会一直占着单实例锁;Electron 把新实例转交给它那个无响应的窗口,
 // 新实例随即静默退出——双击多少次都救不回来。所以抢锁之前,先结束 Windows 判定为
 // "未响应"的同名进程。只在打包版做:开发模式下镜像名是 electron.exe,会误伤别的应用。
@@ -153,6 +156,8 @@ function endHungInstances() {
     try {
       execFileSync('taskkill.exe', ['/F', '/PID', String(pid)], { timeout: 5000, windowsHide: true });
       ended = true;
+      // 留个凭据:用户报"怎么点都打不开"时,这一条能证明确实接管过一个卡死的实例。
+      appendHangLog(HANG_LOG, { event: 'ended-hung-instance', at: new Date().toISOString(), pid });
     } catch {
       // 已经退出,或者不归当前用户管。
     }
@@ -1112,7 +1117,7 @@ function updateTrayMenu() {
 // 挂起记录:主线程停跳超过 15 秒时,记下停跳时刻和当时正在执行的同步跨进程调用,
 // 写到 userData/hang-log.jsonl。step 为 idle 表示卡在消息循环里,也就是外部注入的代码
 // (比如输入法的 TIP)。下面这些函数都会在主线程上同步等待别的进程。
-const guard = startHangWatch(path.join(app.getPath('userData'), 'hang-log.jsonl'));
+const guard = startHangWatch(HANG_LOG);
 isClaudeDesktopRunning = guard('tasklist', isClaudeDesktopRunning);
 regRunQuery = guard('registry', regRunQuery);
 setAutoLaunch = guard('registry', setAutoLaunch);
