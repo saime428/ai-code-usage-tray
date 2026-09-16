@@ -37,6 +37,7 @@ const {
   refreshAccessToken,
   fetchUsage: fetchClaudeOAuthUsage,
   nextUsageAttemptAt,
+  usageThrottled,
 } = require('./lib/claude-oauth');
 const {
   DEFAULT_INDEXED_DB_ROOT,
@@ -116,7 +117,7 @@ let pendingClaudeAuthorization = null;
 let claudeLoginPromise = null;
 let claudeOAuthPromise = null;
 let claudeOAuthCache = null;
-let claudeOAuthNextAttemptAt = 0;
+let claudeOAuthNextAttemptAt = null; // null:还没从磁盘读上次的等待期
 let claudeAuthError = null;
 let claudeDesktopCache = { signature: null, conversation: null };
 let usageWorker = null;
@@ -522,8 +523,37 @@ function disconnectClaudeAccount() {
     if (error.code !== 'ENOENT') throw error;
   }
   claudeOAuthCache = null;
+  try {
+    fs.rmSync(claudeOAuthThrottlePath(), { force: true });
+  } catch {
+    // 留着也只是过期的诊断信息。
+  }
+  claudeOAuthNextAttemptAt = null;
   pendingClaudeAuthorization = null;
   claudeAuthError = null;
+}
+
+// 上次账户额度请求的结果和下次允许时间,写到磁盘。两个用处:冷启动也遵守服务端的
+// Retry-After——否则用户"重启试试"就会再撞一次限流,把等待越续越长(2026-09-16 就是这样
+// 从 22 分钟续到 1 小时以上的);以及不用抓包就能看到上次请求为什么失败。不含令牌。
+function claudeOAuthThrottlePath() {
+  return path.join(app.getPath('userData'), 'claude-oauth-throttle.json');
+}
+
+function readClaudeOAuthThrottle() {
+  try {
+    return Date.parse(JSON.parse(fs.readFileSync(claudeOAuthThrottlePath(), 'utf8')).nextAttemptAt) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeClaudeOAuthThrottle(record) {
+  try {
+    fs.writeFileSync(claudeOAuthThrottlePath(), JSON.stringify(record, null, 2));
+  } catch {
+    // 只是节流状态和诊断信息,写不进去也不影响运行。
+  }
 }
 
 function cachedClaudeOAuthLimits() {
@@ -542,11 +572,11 @@ async function getClaudeOAuthRateLimits(force = false) {
   }
   if (!credentials) return null;
   if (claudeOAuthPromise) return claudeOAuthPromise;
+  if (claudeOAuthNextAttemptAt === null) claudeOAuthNextAttemptAt = readClaudeOAuthThrottle();
   // 成功和失败后都要等到下次允许尝试的时间。以前只在成功后缓存,失败后每 30 秒
   // 刷新都会重试;被 Anthropic 限流(429)时这样会一直续上限流,Fable 额度再也回不来。
-  // 用单调时钟:系统时间被往回调时,绝对时间戳会把刷新一直卡到时钟追上为止。
-  if (!force && performance.now() < claudeOAuthNextAttemptAt) return cachedClaudeOAuthLimits();
-  claudeOAuthNextAttemptAt = nextUsageAttemptAt(performance.now());
+  if (!force && usageThrottled(Date.now(), claudeOAuthNextAttemptAt)) return cachedClaudeOAuthLimits();
+  claudeOAuthNextAttemptAt = nextUsageAttemptAt(Date.now());
   claudeOAuthPromise = (async () => {
     try {
       let limits;
@@ -560,11 +590,19 @@ async function getClaudeOAuthRateLimits(force = false) {
       }
       claudeOAuthCache = limits;
       claudeAuthError = null;
+      // 成功不带 nextAttemptAt:5 分钟的间隔只管运行中的实例,冷启动不用等。
+      writeClaudeOAuthThrottle({ lastAttemptAt: new Date().toISOString(), lastStatus: 200 });
       return limits;
     } catch (error) {
       // 响应带 Retry-After 时,下次尝试可能要比 5 分钟更晚
-      claudeOAuthNextAttemptAt = nextUsageAttemptAt(performance.now(), error);
+      claudeOAuthNextAttemptAt = nextUsageAttemptAt(Date.now(), error);
       claudeAuthError = claudeAuthErrorMessage(error);
+      writeClaudeOAuthThrottle({
+        lastAttemptAt: new Date().toISOString(),
+        lastStatus: error.status || error.name || 'error',
+        lastRetryAfterMs: Number.isFinite(error.retryAfterMs) ? error.retryAfterMs : null,
+        nextAttemptAt: new Date(claudeOAuthNextAttemptAt).toISOString(),
+      });
       return cachedClaudeOAuthLimits();
     } finally {
       claudeOAuthPromise = null;
