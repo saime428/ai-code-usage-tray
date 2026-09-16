@@ -1,6 +1,6 @@
 {
   "name": "ai-code-usage-tray",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "private": true,
   "description": "Windows tray monitor for Claude Code and Codex usage and session activity",
   "author": "saixin",
@@ -18,8 +18,7 @@
     "test": "node --test lib/usage.test.js",
     "usage": "node scripts/print-usage.js",
     "icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-icon.ps1",
-    "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-desktop-shortcut.ps1",
-    "dist": "npm test && electron-builder --win portable --x64 && npm run shortcut",
+    "dist": "npm test && electron-builder --win",
     "check-prices": "node scripts/check-prices.js"
   },
   "devDependencies": {
@@ -47,6 +46,12 @@
       "icon": "build/icon.ico",
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
@@ -54,6 +59,14 @@
         }
       ],
       "artifactName": "AI-Code-Usage-Tray-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "AI-Code-Usage-Tray-Setup-${version}-win-${arch}.${ext}"
+    },
+    "portable": {
+      "unpackDirName": true
     }
   }
 }
