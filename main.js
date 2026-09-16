@@ -30,6 +30,7 @@ const {
 const { sessionTarget } = require('./lib/open-session');
 const { startFullscreenWatch } = require('./lib/fullscreen-watch');
 const { appendHangLog, parseTasklistPids, startHangWatch } = require('./lib/hang-guard');
+const { runValuePath, portableShouldYield } = require('./lib/auto-launch');
 const {
   createAuthorization,
   parseAuthorizationCode,
@@ -554,6 +555,23 @@ function writeClaudeOAuthThrottle(record) {
     fs.writeFileSync(claudeOAuthThrottlePath(), JSON.stringify(record, null, 2));
   } catch {
     // 只是节流状态和诊断信息,写不进去也不影响运行。
+  }
+}
+
+// 写文件走「临时文件 + rename」,正常路径在 finally 里删掉临时文件。但 v1.3.0 起接管卡死
+// 实例是 taskkill /F,finally 不会执行,临时文件就留在 userData 里了。启动时清掉上一次的:
+// 只认自己写的前缀和 .tmp 后缀,当前进程的不动(单实例锁保证没有第二个实例在写)。
+function cleanStaleTempFiles(file) {
+  const prefix = `${path.basename(file)}.`;
+  const mine = `${prefix}${process.pid}.tmp`;
+  try {
+    for (const name of fs.readdirSync(path.dirname(file))) {
+      if (name.startsWith(prefix) && name.endsWith('.tmp') && name !== mine) {
+        fs.rmSync(path.join(path.dirname(file), name), { force: true });
+      }
+    }
+  } catch {
+    // 清不掉只是留几个残file,不值得打断启动。
   }
 }
 
@@ -1082,7 +1100,19 @@ function syncAutoLaunch() {
     }
   }
   // 自愈:老 API 条目或版本号变化的旧路径,统一刷成当前 exe
-  if (legacy || autoLaunchEnabled()) setAutoLaunch(true);
+  if (!legacy && !autoLaunchEnabled()) return;
+  const current = runValuePath(regRunQuery(RUN_VALUE));
+  if (
+    portableShouldYield({
+      current,
+      own: LOGIN_ITEM_PATH,
+      isPortable: Boolean(process.env.PORTABLE_EXECUTABLE_FILE),
+      currentExists: Boolean(current) && fs.existsSync(current),
+    })
+  ) {
+    return;
+  }
+  setAutoLaunch(true);
 }
 
 function quickMenuTemplate(includePaths) {
@@ -1175,6 +1205,7 @@ writeClaudeCredentials = guard('safe-storage', writeClaudeCredentials);
 
 app.whenReady().then(() => {
   loadSettings();
+  [accountLedgerPath(), claudeAuthPath()].forEach(cleanStaleTempFiles);
   loadAccountLedger();
   createPanelWindow();
   createFloatingWindow();
