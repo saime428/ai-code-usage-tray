@@ -18,7 +18,7 @@
     "test": "node --test lib/usage.test.js",
     "usage": "node scripts/print-usage.js",
     "icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/make-icon.ps1",
-    "dist": "npm test && electron-builder --win",
+    "dist": "npm test && electron-builder --win --publish never",
     "check-prices": "node scripts/check-prices.js"
   },
   "devDependencies": {
