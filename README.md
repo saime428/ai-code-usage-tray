@@ -79,7 +79,7 @@ Older versions are listed under [Releases](https://github.com/saime428/ai-code-u
 
 Prefer not to install? `AI-Code-Usage-Tray-*-win-x64.exe` (no `Setup` in the name) is the portable build: double-click to run. It unpacks itself to a new temporary folder on every launch, so it starts slower, and Windows may treat its tray icon as a new program each time.
 
-Moving from the portable build to the installer: quit the portable app first (right-click → quit), because the installer may not notice a copy running from a temporary folder. If launch-at-login was on, the installed app takes the entry over the first time it starts — and running the portable build again hands it back, to a folder that is deleted on exit, so pick one build and stay with it.
+Moving from the portable build to the installer: quit the portable app first (right-click → quit), because the installer may not notice a copy running from a temporary folder. If launch-at-login was on, the installed app takes the entry over the first time it starts, and running the portable build afterwards leaves that entry alone — it only claims it when the exe the entry points at is gone.
 
 > [!WARNING]
 > The builds are not code-signed yet, so SmartScreen may warn you. Download only from this repository's Releases and verify the SHA-256 published with each release. Signed builds will follow the [Code signing policy](#code-signing-policy) below.
