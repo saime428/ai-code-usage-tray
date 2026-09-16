@@ -168,6 +168,8 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（
 - `hang`：`lastBeatAt` 是主线程停住的时刻。`step` 是当时正在执行的、会同步等待其他进程的调用（`tasklist`、`registry`、`tray`、`window`、`safe-storage`）；都不是则为 `idle`，表示卡在处理窗口消息的过程中，那里运行的是从应用外部注入的代码。
 - `processes`：卡住前 15 分钟内启动的进程，以及输入法、文本服务相关进程和它们的启动时间。
 - `recovered`：主线程恢复时写入，附带卡了多久。
+- `ended-hung-instance`：接管的那次启动写的，带被结束进程的 PID。
+- `watchdog-error` / `watchdog-exit`：看门狗自己没起来或中途退出了。没有这两条的话，空日志就分不清是没卡过还是根本没在看。
 
 会往每个程序里注入文本服务 DLL 的输入法（例如微信输入法）是其他软件出现这类跨进程卡死的已知原因，目前分析过的那一次卡死里也加载了这个 DLL。这只是线索，不是结论：如果记录里 `step` 是 `idle`，同时卡住前刚有输入法进程启动，就基本可以确认。[反馈卡死问题](https://github.com/saime428/ai-code-usage-tray/issues)时请附上这个文件。
 

@@ -169,6 +169,8 @@ To see why it froze, open `%APPDATA%\ai-code-usage-tray\hang-log.jsonl`. A freez
 - `hang` — `lastBeatAt` is when the main thread stopped. `step` names the synchronous call into another process that was running (`tasklist`, `registry`, `tray`, `window`, `safe-storage`), or is `idle` if none was: the thread froze while handling window messages, which is where code injected from outside the app runs.
 - `processes` — processes started in the 15 minutes before the freeze, plus input-method and text-services processes with their start times.
 - `recovered` — written if the thread comes back, with how long it was stuck.
+- `ended-hung-instance` — written by the launch that took over, naming the process it ended.
+- `watchdog-error` / `watchdog-exit` — the watchdog itself could not start, or stopped early. Without these an empty log would be ambiguous.
 
 Input methods that load a text-service DLL into every program (Tencent WeType, for example) are a known cause of this kind of cross-process freeze in other software, and the one freeze analysed so far had that DLL loaded. That is a lead, not a verdict: an `idle` step together with an input-method process that started just before the freeze would confirm it. Please attach the log when you [report a hang](https://github.com/saime428/ai-code-usage-tray/issues).
 
