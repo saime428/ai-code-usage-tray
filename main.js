@@ -429,6 +429,7 @@ function claudeAuthStatus() {
 }
 
 function claudeAuthErrorMessage(error) {
+  if (error && error.loginExpired) return 'Claude 登录已过期，请断开后重新连接';
   if (error && error.status === 400) return 'Claude 授权码无效或已过期，请重新连接';
   if (error && error.status === 401) return 'Claude 登录已过期，请断开后重新连接';
   if (error && error.status === 403) return 'Claude 授权范围不足，请断开后重新连接';
@@ -600,6 +601,8 @@ async function getClaudeOAuthRateLimits(force = false) {
       writeClaudeOAuthThrottle({
         lastAttemptAt: new Date().toISOString(),
         lastStatus: error.status || error.name || 'error',
+        // 服务端的错误说明,只有文字没有令牌;状态码分不清"令牌过期"和"请求有问题"。
+        lastError: error.message,
         lastRetryAfterMs: Number.isFinite(error.retryAfterMs) ? error.retryAfterMs : null,
         nextAttemptAt: new Date(claudeOAuthNextAttemptAt).toISOString(),
       });
