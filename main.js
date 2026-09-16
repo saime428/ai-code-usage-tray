@@ -36,6 +36,7 @@ const {
   exchangeAuthorizationCode,
   refreshAccessToken,
   fetchUsage: fetchClaudeOAuthUsage,
+  nextUsageAttemptAt,
 } = require('./lib/claude-oauth');
 const {
   DEFAULT_INDEXED_DB_ROOT,
@@ -89,7 +90,6 @@ const FLOATING_SIZE = {
   right: { collapsed: [58, 324], expanded: [326, 480] },
 };
 const FLOATING_COLLAPSE_MS = 300;
-const CLAUDE_OAUTH_REFRESH_MS = 5 * 60 * 1000;
 const DEFAULT_SETTINGS = {
   floatingEnabled: true,
   floatingPosition: 'top',
@@ -116,6 +116,7 @@ let pendingClaudeAuthorization = null;
 let claudeLoginPromise = null;
 let claudeOAuthPromise = null;
 let claudeOAuthCache = null;
+let claudeOAuthNextAttemptAt = 0;
 let claudeAuthError = null;
 let claudeDesktopCache = { signature: null, conversation: null };
 let usageWorker = null;
@@ -425,7 +426,7 @@ function claudeAuthErrorMessage(error) {
   if (error && error.status === 400) return 'Claude 授权码无效或已过期，请重新连接';
   if (error && error.status === 401) return 'Claude 登录已过期，请断开后重新连接';
   if (error && error.status === 403) return 'Claude 授权范围不足，请断开后重新连接';
-  if (error && error.status === 429) return 'Claude 暂时限制了额度查询，请稍后刷新';
+  if (error && error.status === 429) return 'Claude 暂时限制了额度查询，稍后会自动重试';
   if (error && error.name === 'TimeoutError') return 'Claude 额度查询超时，请检查网络';
   return error && error.message ? error.message : 'Claude 额度读取失败';
 }
@@ -520,6 +521,12 @@ function disconnectClaudeAccount() {
   claudeAuthError = null;
 }
 
+function cachedClaudeOAuthLimits() {
+  return claudeOAuthCache
+    ? { ...claudeOAuthCache, stale: Date.now() - claudeOAuthCache.updatedAt > 15 * 60 * 1000 }
+    : null;
+}
+
 async function getClaudeOAuthRateLimits(force = false) {
   let credentials;
   try {
@@ -529,14 +536,12 @@ async function getClaudeOAuthRateLimits(force = false) {
     return null;
   }
   if (!credentials) return null;
-  if (
-    !force &&
-    claudeOAuthCache &&
-    Date.now() - claudeOAuthCache.updatedAt < CLAUDE_OAUTH_REFRESH_MS
-  ) {
-    return claudeOAuthCache;
-  }
   if (claudeOAuthPromise) return claudeOAuthPromise;
+  // 成功和失败后都要等到下次允许尝试的时间。以前只在成功后缓存,失败后每 30 秒
+  // 刷新都会重试;被 Anthropic 限流(429)时这样会一直续上限流,Fable 额度再也回不来。
+  // 用单调时钟:系统时间被往回调时,绝对时间戳会把刷新一直卡到时钟追上为止。
+  if (!force && performance.now() < claudeOAuthNextAttemptAt) return cachedClaudeOAuthLimits();
+  claudeOAuthNextAttemptAt = nextUsageAttemptAt(performance.now());
   claudeOAuthPromise = (async () => {
     try {
       let limits;
@@ -552,10 +557,10 @@ async function getClaudeOAuthRateLimits(force = false) {
       claudeAuthError = null;
       return limits;
     } catch (error) {
+      // 响应带 Retry-After 时,下次尝试可能要比 5 分钟更晚
+      claudeOAuthNextAttemptAt = nextUsageAttemptAt(performance.now(), error);
       claudeAuthError = claudeAuthErrorMessage(error);
-      return claudeOAuthCache
-        ? { ...claudeOAuthCache, stale: Date.now() - claudeOAuthCache.updatedAt > 15 * 60 * 1000 }
-        : null;
+      return cachedClaudeOAuthLimits();
     } finally {
       claudeOAuthPromise = null;
     }
