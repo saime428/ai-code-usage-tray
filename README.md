@@ -42,6 +42,12 @@
 
 ## What's new
 
+### v1.3.2
+
+- **Upgrading no longer turns launch-at-login off.** v1.3.1 taught the uninstaller to clear the startup entry, but a one-click install runs the previous uninstaller first, so every update silently switched the setting off. The uninstall hook now skips that when it is part of an update; a real uninstall still clears it.
+- **Running the portable build no longer takes the startup entry from an installed copy.** Installing is a deliberate act and still takes it over; being double-clicked once is not. A portable launch now claims the entry only when the exe it points at is gone.
+- **Leftover temporary files are cleared at startup.** Writes go through a temp file, and a forced kill — which recovering a hung instance does — skipped the cleanup. Only this app's own `.tmp` files are removed.
+
 ### v1.3.1
 
 - **Rate-limit waits are honored in full and survive restarts.** v1.3.0 capped the wait Anthropic asked for at one hour, so when the server wanted longer the app knocked again every hour and stayed rate-limited — and every restart made a fresh request straight away. The cap is now 24 hours, and the wait is written to `%APPDATA%\ai-code-usage-tray\claude-oauth-throttle.json` (status code and timestamps only, no tokens), so a restart respects it too. That file also tells you why the last request failed.
