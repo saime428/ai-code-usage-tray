@@ -45,6 +45,7 @@
 ### v1.3.1
 
 - **Rate-limit waits are honored in full and survive restarts.** v1.3.0 capped the wait Anthropic asked for at one hour, so when the server wanted longer the app knocked again every hour and stayed rate-limited — and every restart made a fresh request straight away. The cap is now 24 hours, and the wait is written to `%APPDATA%\ai-code-usage-tray\claude-oauth-throttle.json` (status code and timestamps only, no tokens), so a restart respects it too. That file also tells you why the last request failed.
+- **An expired login says so and stops retrying.** When the refresh token has expired (Anthropic answers `400 Refresh token expired`), the panel now says the login has expired instead of talking about an authorization code, and the app stops knocking on the API every 5 minutes until you reconnect the account.
 - **Codex pricing covers the cyber models and the daybreak aliases.** `gpt-5.5-cyber` was billed as `gpt-5.5` (2.5× under); `gpt-5.6-cyber`, `gpt-daybreak-blue-latest` and `gpt-daybreak-red-latest` were not recognized at all and cost nothing. Confirmed against OpenAI's pricing page.
 
 ### v1.3.0

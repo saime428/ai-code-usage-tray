@@ -45,6 +45,7 @@
 ### v1.3.1
 
 - **限流等待完整执行，重启也不忘**。v1.3.0 把 Anthropic 要求的等待封顶在 1 小时，服务端要求更久时应用每小时又去敲一次，限流一直解不开；而且每次重启都会立刻请求一次。现在封顶 24 小时，等待期写在 `%APPDATA%\ai-code-usage-tray\claude-oauth-throttle.json`（只有状态码和时间，没有令牌），重启后照样遵守——上次请求为什么失败也能在这个文件里看到。
+- **登录过期会明说，并且不再空转重试**。刷新令牌过期时（Anthropic 回 `400 Refresh token expired`），面板会提示「登录已过期，请断开后重新连接」，而不是登录码阶段的「授权码无效」；应用也不再每 5 分钟撞两次接口，等你重新连接账户后再继续。
 - **Codex 价格表补上 cyber 型号和 daybreak 别名**。`gpt-5.5-cyber` 以前按 `gpt-5.5` 算（少算 2.5 倍）；`gpt-5.6-cyber`、`gpt-daybreak-blue-latest`、`gpt-daybreak-red-latest` 以前完全不认识，金额算成 0。已对照 OpenAI 官方价格页。
 
 ### v1.3.0
