@@ -42,6 +42,11 @@
 
 ## 最新更新
 
+### v1.3.1
+
+- **限流等待完整执行，重启也不忘**。v1.3.0 把 Anthropic 要求的等待封顶在 1 小时，服务端要求更久时应用每小时又去敲一次，限流一直解不开；而且每次重启都会立刻请求一次。现在封顶 24 小时，等待期写在 `%APPDATA%\ai-code-usage-tray\claude-oauth-throttle.json`（只有状态码和时间，没有令牌），重启后照样遵守——上次请求为什么失败也能在这个文件里看到。
+- **Codex 价格表补上 cyber 型号和 daybreak 别名**。`gpt-5.5-cyber` 以前按 `gpt-5.5` 算（少算 2.5 倍）；`gpt-5.6-cyber`、`gpt-daybreak-blue-latest`、`gpt-daybreak-red-latest` 以前完全不认识，金额算成 0。已对照 OpenAI 官方价格页。
+
 ### v1.3.0
 
 - **新增安装版**。推荐下载一键安装包 `AI-Code-Usage-Tray-Setup-*-win-x64.exe`：按当前用户安装到 `%LOCALAPPDATA%\Programs`，不需要管理员权限；启动时不用每次解压约 350 MB，托盘图标和开机自启的路径也固定下来。便携版继续提供。
@@ -180,6 +185,7 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（
 - 本地文件损坏、被锁或权限不够时，会留下上一份快照，并标成过期。
 - OAuth 登录是可选项。网络不通或碰到 Anthropic 限流时，本地用量监控照常工作。
 - 挂起记录 `hang-log.jsonl` 只保存在本机，里面只有时间、步骤名、进程名和启动时间，没有用量数据或会话内容。
+- `claude-oauth-throttle.json` 只记录上一次账户额度请求的状态码和时间，让限流等待期在重启后仍然生效，不含令牌。
 - 完整说明见 [Privacy Policy](PRIVACY.md)。
 
 ## Code signing policy

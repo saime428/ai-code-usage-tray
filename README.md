@@ -42,6 +42,11 @@
 
 ## What's new
 
+### v1.3.1
+
+- **Rate-limit waits are honored in full and survive restarts.** v1.3.0 capped the wait Anthropic asked for at one hour, so when the server wanted longer the app knocked again every hour and stayed rate-limited — and every restart made a fresh request straight away. The cap is now 24 hours, and the wait is written to `%APPDATA%\ai-code-usage-tray\claude-oauth-throttle.json` (status code and timestamps only, no tokens), so a restart respects it too. That file also tells you why the last request failed.
+- **Codex pricing covers the cyber models and the daybreak aliases.** `gpt-5.5-cyber` was billed as `gpt-5.5` (2.5× under); `gpt-5.6-cyber`, `gpt-daybreak-blue-latest` and `gpt-daybreak-red-latest` were not recognized at all and cost nothing. Confirmed against OpenAI's pricing page.
+
 ### v1.3.0
 
 - **Installer build.** The one-click installer `AI-Code-Usage-Tray-Setup-*-win-x64.exe` is now the recommended download. It installs for the current user under `%LOCALAPPDATA%\Programs` without admin rights, starts without unpacking ~350 MB on every launch, and keeps the tray icon and launch-at-login entry on a stable path. The portable build is still published.
@@ -181,6 +186,7 @@ Input methods that load a text-service DLL into every program (Tencent WeType, f
 - If a local file is corrupt, locked or unreadable, the last snapshot is kept and marked stale.
 - OAuth login is optional. Local monitoring keeps working offline or when Anthropic rate-limits.
 - The hang log (`hang-log.jsonl`) stays on this machine. It holds timestamps, a step name, and process names with their start times — no usage data or session content.
+- `claude-oauth-throttle.json` records the last account quota request's status code and timestamps, so a rate-limit wait survives a restart. No tokens.
 - Full details in the [Privacy Policy](PRIVACY.md).
 
 ## Code signing policy
