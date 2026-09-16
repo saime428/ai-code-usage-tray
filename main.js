@@ -29,6 +29,7 @@ const {
 } = require('./lib/account-ledger');
 const { sessionTarget } = require('./lib/open-session');
 const { startFullscreenWatch } = require('./lib/fullscreen-watch');
+const { parseTasklistPids, startHangWatch } = require('./lib/hang-guard');
 const {
   createAuthorization,
   parseAuthorizationCode,
@@ -125,7 +126,47 @@ let accountLedgerError = null;
 let accountLedgerDirty = false;
 let accountLedgerWriteTimer = null;
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// 卡死的主实例会一直占着单实例锁;Electron 把新实例转交给它那个无响应的窗口,
+// 新实例随即静默退出——双击多少次都救不回来。所以抢锁之前,先结束 Windows 判定为
+// "未响应"的同名进程。只在打包版做:开发模式下镜像名是 electron.exe,会误伤别的应用。
+// 不加 /T:实测主进程一没,渲染进程、GPU 进程和 fullscreen-watch 的 PowerShell 五秒内全部
+// 自行退出;而 shell.openExternal 打开的浏览器、Claude Desktop 也挂在这棵进程树上,连坐会把
+// 用户正开着的窗口一起关掉。
+// ponytail: 恰好在重新打开那一刻忙了 5 秒以上的健康实例(以及它的 Desktop 缓存探测子进程)
+// 也会被当成卡死结束掉;顶替它的新实例照常启动,也正是用户重新打开时想要的结果。
+function endHungInstances() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  let output = '';
+  try {
+    output = execFileSync(
+      'tasklist.exe',
+      ['/FI', 'IMAGENAME eq ' + path.basename(process.execPath), '/FI', 'STATUS eq NOT RESPONDING', '/FO', 'CSV', '/NH'],
+      { encoding: 'utf8', timeout: 5000, windowsHide: true },
+    );
+  } catch {
+    return;
+  }
+  let ended = false;
+  for (const pid of parseTasklistPids(output)) {
+    if (pid === process.pid) continue;
+    try {
+      execFileSync('taskkill.exe', ['/F', '/PID', String(pid)], { timeout: 5000, windowsHide: true });
+      ended = true;
+    } catch {
+      // 已经退出,或者不归当前用户管。
+    }
+  }
+  // taskkill 返回时被杀的进程可能还没放开单实例锁,等一下再抢,否则这次启动又会静默退出。
+  if (ended) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+}
+
+endHungInstances();
+// 抢不到锁就到此为止:再往下会起看门狗 worker,而它开头的日志轮转会把正在运行的那个实例的
+// hang-log.jsonl 改名,记录就这么没了。
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  return;
+}
 
 const fmtTokens = (n) =>
   n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n);
@@ -1062,6 +1103,24 @@ function quickMenuTemplate(includePaths) {
 function updateTrayMenu() {
   if (tray) tray.setContextMenu(Menu.buildFromTemplate(quickMenuTemplate(true)));
 }
+
+// 挂起记录:主线程停跳超过 15 秒时,记下停跳时刻和当时正在执行的同步跨进程调用,
+// 写到 userData/hang-log.jsonl。step 为 idle 表示卡在消息循环里,也就是外部注入的代码
+// (比如输入法的 TIP)。下面这些函数都会在主线程上同步等待别的进程。
+const guard = startHangWatch(path.join(app.getPath('userData'), 'hang-log.jsonl'));
+isClaudeDesktopRunning = guard('tasklist', isClaudeDesktopRunning);
+regRunQuery = guard('registry', regRunQuery);
+setAutoLaunch = guard('registry', setAutoLaunch);
+updateTray = guard('tray', updateTray);
+updateTrayMenu = guard('tray', updateTrayMenu);
+keepWindowOnTop = guard('window', keepWindowOnTop);
+updateFloatingVisibility = guard('window', updateFloatingVisibility);
+setFloatingExpanded = guard('window', setFloatingExpanded);
+togglePanel = guard('window', togglePanel);
+loadAccountLedger = guard('safe-storage', loadAccountLedger);
+flushAccountLedger = guard('safe-storage', flushAccountLedger);
+readClaudeCredentials = guard('safe-storage', readClaudeCredentials);
+writeClaudeCredentials = guard('safe-storage', writeClaudeCredentials);
 
 app.whenReady().then(() => {
   loadSettings();
