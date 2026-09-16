@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/saime428/ai-code-usage-tray/releases/latest"><strong>下载最新 Windows 便携版</strong></a>
+  <a href="https://github.com/saime428/ai-code-usage-tray/releases/latest"><strong>下载最新 Windows 版</strong></a>
   · <a href="#快速开始">快速开始</a>
   · <a href="#本地开发">开发指南</a>
 </p>
@@ -42,6 +42,14 @@
 
 ## 最新更新
 
+### v1.3.0
+
+- **新增安装版**。推荐下载一键安装包 `AI-Code-Usage-Tray-Setup-*-win-x64.exe`：按当前用户安装到 `%LOCALAPPDATA%\Programs`，不需要管理员权限；启动时不用每次解压约 350 MB，托盘图标和开机自启的路径也固定下来。便携版继续提供。
+- **再次打开就能救回卡死的实例**。以前应用一旦未响应，怎么重新打开都没用：卡死的那个一直占着单实例锁，新打开的会静默退出。现在新实例会先结束 Windows 判定为「未响应」的同名进程，再接管。
+- **便携版不再误伤正在运行的实例**。以前每次启动都解压到同一个临时目录、退出时整个删掉，连正从这个目录运行的实例要用的文件也会被删。现在每次启动用独立目录。
+- **挂起记录**。主线程停止响应超过 15 秒时，`%APPDATA%\ai-code-usage-tray\hang-log.jsonl` 会记下发生时间、当时在执行哪一步、之前启动了哪些进程，不上传任何内容。见[应用未响应时](#应用未响应时)。
+- **Claude 账户额度能从限流中恢复**。以前 Anthropic 限流额度查询时，应用每 30 秒刷新都会重试一次，可能让账户一直处于限流状态，Fable 额度也就一直不显示。现在不论上次成功还是失败，每 5 分钟最多请求一次；Anthropic 的响应要求等更久时照它说的等（最多 1 小时）。
+
 ### v1.2.2
 
 - **修复 Grok 周额度在新计费周期开始时整块消失**。xAI 在用量为 0 时会省略 `creditUsagePercent` 字段，此前这被当成「读不出来」而隐藏整个额度块，要等用量涨过 1% 才自己恢复。现在字段缺失即读作 0%。
@@ -58,12 +66,16 @@
 ## 快速开始
 
 1. 打开 [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest)。
-2. 下载 `AI-Code-Usage-Tray-*-win-x64.exe`。
-3. 双击运行，无需安装。单击悬浮条或托盘图标打开完整面板。
+2. 下载安装包 `AI-Code-Usage-Tray-Setup-*-win-x64.exe` 并运行。它为当前用户安装到 `%LOCALAPPDATA%\Programs`（不需要管理员权限），创建桌面和开始菜单快捷方式，装完自动启动。卸载在 Windows 设置 → 应用 里进行，`%APPDATA%\ai-code-usage-tray` 下的设置和账号账本会保留。
+3. 单击悬浮条或托盘图标打开完整面板。
 4. 右键悬浮条或托盘图标，可以刷新、开机自启、切换顶部/右侧、隐藏悬浮条、切换全屏时自动隐藏或退出。
 
+不想安装？文件名里不带 `Setup` 的 `AI-Code-Usage-Tray-*-win-x64.exe` 是便携版，双击即可运行。它每次启动都会解压到一个新的临时目录，所以启动慢一些，Windows 也可能每次都把它的托盘图标当成新程序。
+
+从便携版换到安装版：先退出便携版（右键 → 退出）再运行安装包，因为安装程序可能察觉不到从临时目录运行的副本。如果之前开了开机自启，安装版第一次启动时会自动接管这一项；之后再运行便携版又会把它抢回去，而便携版的目录退出即删——所以两种版本挑一个用就好。
+
 > [!WARNING]
-> 当前便携版还没有 Windows 代码签名，SmartScreen 可能会弹出提醒。请只从本仓库的 Releases 下载，并核对 Release 里的 SHA-256。之后的签名版本会按下面的 [Code signing policy](#code-signing-policy) 发布。
+> 安装包和便携版目前都还没有 Windows 代码签名，SmartScreen 可能会弹出提醒。请只从本仓库的 Releases 下载，并核对 Release 里的 SHA-256。之后的签名版本会按下面的 [Code signing policy](#code-signing-policy) 发布。
 
 ## 数据从哪里来
 
@@ -130,7 +142,7 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（
 
 ### 启用 hooks（可选）
 
-便携版不包含 hooks 脚本——请从本仓库获取 `hooks/` 目录（克隆仓库或单独下载那两个文件），然后挂到 `~/.claude/settings.json`：
+安装包和便携版都不包含 hooks 脚本——请从本仓库获取 `hooks/` 目录（克隆仓库或单独下载那两个文件），然后挂到 `~/.claude/settings.json`：
 
 ```json
 {
@@ -147,12 +159,25 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（
 
 `report-status.js` 把每个会话的状态写到 `~/.claude/usage-tray-status/`，永远快速退出，不会拖慢 Claude Code。`report-rate-limits.js` 占用 statusLine 槽位捕获官方额度，不输出任何内容。Claude Code 只有一个 statusLine 槽位——如果你已经在用别的 statusLine，保留你自己的并跳过这部分即可，会话状态不依赖它。新会话会自动生效。
 
+## 应用未响应时
+
+再打开一次即可。新实例会先结束 Windows 判定为「未响应」的同名进程再接管；万一还是打不开，到任务管理器里结束它。
+
+想知道为什么卡住，打开 `%APPDATA%\ai-code-usage-tray\hang-log.jsonl`。每次卡住超过 15 秒会追加这几行：
+
+- `hang`：`lastBeatAt` 是主线程停住的时刻。`step` 是当时正在执行的、会同步等待其他进程的调用（`tasklist`、`registry`、`tray`、`window`、`safe-storage`）；都不是则为 `idle`，表示卡在处理窗口消息的过程中，那里运行的是从应用外部注入的代码。
+- `processes`：卡住前 15 分钟内启动的进程，以及输入法、文本服务相关进程和它们的启动时间。
+- `recovered`：主线程恢复时写入，附带卡了多久。
+
+会往每个程序里注入文本服务 DLL 的输入法（例如微信输入法）是其他软件出现这类跨进程卡死的已知原因，目前分析过的那一次卡死里也加载了这个 DLL。这只是线索，不是结论：如果记录里 `step` 是 `idle`，同时卡住前刚有输入法进程启动，就基本可以确认。[反馈卡死问题](https://github.com/saime428/ai-code-usage-tray/issues)时请附上这个文件。
+
 ## 隐私与安全
 
 - 不上传 transcript、提示词、项目路径或会话标题。
 - 不读浏览器 Cookie，也不需要 Anthropic / OpenAI / xAI API Key。
 - 本地文件损坏、被锁或权限不够时，会留下上一份快照，并标成过期。
 - OAuth 登录是可选项。网络不通或碰到 Anthropic 限流时，本地用量监控照常工作。
+- 挂起记录 `hang-log.jsonl` 只保存在本机，里面只有时间、步骤名、进程名和启动时间，没有用量数据或会话内容。
 - 完整说明见 [Privacy Policy](PRIVACY.md)。
 
 ## Code signing policy
@@ -176,13 +201,13 @@ npm run usage   # 终端打印今日用量，不启动 Electron
 npm run check-prices   # 把价格表和 LiteLLM 价格表比对
 ```
 
-生成 Windows x64 便携版：
+生成 Windows x64 安装包和便携版：
 
 ```powershell
 npm run dist
 ```
 
-产物位于 `dist/AI-Code-Usage-Tray-<version>-win-x64.exe`。
+产物都在 `dist/` 下：`AI-Code-Usage-Tray-Setup-<version>-win-x64.exe`（安装包）和 `AI-Code-Usage-Tray-<version>-win-x64.exe`（便携版）。更新自己机器上装的版本：先退出正在运行的应用，再运行新的 Setup 文件。
 
 ### 项目结构
 
@@ -193,6 +218,7 @@ lib/usage.js            Claude 本地用量与会话解析
 lib/codex-usage.js      Codex 本地用量与额度解析
 lib/grok-usage.js       Grok 本地用量、官方金额与周额度解析
 lib/claude-oauth.js     可选 Claude OAuth / PKCE
+lib/hang-guard.js       挂起记录看门狗与未响应实例查找
 renderer/index.html     完整面板
 renderer/floating.html  贴边悬浮条
 hooks/                   可选 Claude Code 状态 hooks
@@ -207,13 +233,13 @@ npm run dist
 git status --short
 ```
 
-如果 `check-prices` 报告差异，先到官方价格页确认，更新价格表和 `PRICE_SNAPSHOT`。更新 `package.json` 版本和 README 顶部的「最新更新」小节，在干净的 Windows 环境里启动便携版，再创建 GitHub Release，上传 `.exe` 和 SHA-256。
+如果 `check-prices` 报告差异，先到官方价格页确认，更新价格表和 `PRICE_SNAPSHOT`。更新 `package.json` 版本和 README 顶部的「最新更新」小节，在干净的 Windows 环境里安装 Setup 版验证，再创建 GitHub Release，上传两个 `.exe` 及各自的 SHA-256。
 
 ## 当前限制
 
 - 仅支持 Windows x64。
 - 还没有自动更新。
-- 当前便携版还没做代码签名。SignPath Foundation 的申请和自动签名都还在进行中。
+- 安装包和便携版都还没做代码签名。SignPath Foundation 的申请和自动签名都还在进行中。
 - Claude OAuth 可能被 Anthropic 限流，也可能受当前网络出口影响。本地推算不受影响。
 - Claude Desktop 普通 Home 聊天读不到精确 token 明细，只能显示会话状态和额度百分比，算不出金额。
 - Grok 会话仅有 CLI 一种来源：暂不支持分账号统计（缺身份识别），也没有点击跳转的深链。

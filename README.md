@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/saime428/ai-code-usage-tray/releases/latest"><strong>Download the latest Windows portable build</strong></a>
+  <a href="https://github.com/saime428/ai-code-usage-tray/releases/latest"><strong>Download the latest Windows build</strong></a>
   · <a href="#quick-start">Quick start</a>
   · <a href="#development">Development</a>
 </p>
@@ -40,8 +40,15 @@
 | **Local-first** | By default it only reads data the clients already wrote on this machine. No prompts or session content are uploaded. |
 | **Zero API keys** | Local mode needs no API key. Claude OAuth is optional, for more accurate quotas. |
 
-<a id="quick-start"></a>
 ## What's new
+
+### v1.3.0
+
+- **Installer build.** The one-click installer `AI-Code-Usage-Tray-Setup-*-win-x64.exe` is now the recommended download. It installs for the current user under `%LOCALAPPDATA%\Programs` without admin rights, starts without unpacking ~350 MB on every launch, and keeps the tray icon and launch-at-login entry on a stable path. The portable build is still published.
+- **Opening the app again recovers a frozen instance.** Before, once the app stopped responding, relaunching it did nothing: the frozen copy kept the single-instance lock and every new launch quit silently. A new launch now ends any copy Windows reports as not responding, then takes over.
+- **The portable build no longer damages a running copy.** Every launch used to unpack into the same temporary folder and delete it on exit, including files that a copy still running from that folder needed. Each launch now gets its own folder.
+- **Hang log.** If the main thread stops responding for more than 15 seconds, `%APPDATA%\ai-code-usage-tray\hang-log.jsonl` records when it happened, which step was running and which processes had just started. Nothing is uploaded. See [If the app stops responding](#if-the-app-stops-responding).
+- **The Claude account quota recovers from rate limiting.** When Anthropic rate-limited the quota request, the app retried it on every 30-second refresh, which could keep the account rate-limited indefinitely and hide the Fable window. It now makes at most one attempt every 5 minutes, whether the last one succeeded or failed, and waits longer when Anthropic's response asks it to (up to an hour).
 
 ### v1.2.2
 
@@ -56,15 +63,20 @@
 
 Older versions are listed under [Releases](https://github.com/saime428/ai-code-usage-tray/releases).
 
+<a id="quick-start"></a>
 ## Quick start
 
 1. Open [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest).
-2. Download `AI-Code-Usage-Tray-*-win-x64.exe`.
-3. Double-click to run — no install needed. Click the floating bar or tray icon to open the full panel.
+2. Download the installer `AI-Code-Usage-Tray-Setup-*-win-x64.exe` and run it. It installs for the current user under `%LOCALAPPDATA%\Programs` (no admin rights), adds desktop and Start menu shortcuts and starts the app. Uninstall it from Windows Settings → Apps; settings and the account ledger in `%APPDATA%\ai-code-usage-tray` are kept.
+3. Click the floating bar or tray icon to open the full panel.
 4. Right-click the floating bar or tray icon to refresh, toggle launch-at-login, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
 
+Prefer not to install? `AI-Code-Usage-Tray-*-win-x64.exe` (no `Setup` in the name) is the portable build: double-click to run. It unpacks itself to a new temporary folder on every launch, so it starts slower, and Windows may treat its tray icon as a new program each time.
+
+Moving from the portable build to the installer: quit the portable app first (right-click → quit), because the installer may not notice a copy running from a temporary folder. If launch-at-login was on, the installed app takes the entry over the first time it starts — and running the portable build again hands it back, to a folder that is deleted on exit, so pick one build and stay with it.
+
 > [!WARNING]
-> The portable build is not code-signed yet, so SmartScreen may warn you. Download only from this repository's Releases and verify the SHA-256 published with each release. Signed builds will follow the [Code signing policy](#code-signing-policy) below.
+> The builds are not code-signed yet, so SmartScreen may warn you. Download only from this repository's Releases and verify the SHA-256 published with each release. Signed builds will follow the [Code signing policy](#code-signing-policy) below.
 
 ## Where the data comes from
 
@@ -131,7 +143,7 @@ With the optional Claude CLI hooks installed, working / attention / idle become 
 
 ### Enabling hooks (optional)
 
-The portable build does not include the hook scripts — get the `hooks/` directory from this repository (clone it, or download the two files). Then wire them into `~/.claude/settings.json`:
+Neither the installer nor the portable build includes the hook scripts — get the `hooks/` directory from this repository (clone it, or download the two files). Then wire them into `~/.claude/settings.json`:
 
 ```json
 {
@@ -148,12 +160,25 @@ The portable build does not include the hook scripts — get the `hooks/` direct
 
 `report-status.js` writes per-session states to `~/.claude/usage-tray-status/` and always exits fast, so it never slows Claude Code down. `report-rate-limits.js` uses the statusLine slot to capture official rate limits and prints nothing. Claude Code has a single statusLine slot — if you already use one, keep yours and skip that part; session states work without it. New sessions pick the hooks up automatically.
 
+## If the app stops responding
+
+Open it again. A new launch ends any copy that Windows reports as not responding and takes over. If that still does not help, end the process from Task Manager.
+
+To see why it froze, open `%APPDATA%\ai-code-usage-tray\hang-log.jsonl`. A freeze longer than 15 seconds adds these lines:
+
+- `hang` — `lastBeatAt` is when the main thread stopped. `step` names the synchronous call into another process that was running (`tasklist`, `registry`, `tray`, `window`, `safe-storage`), or is `idle` if none was: the thread froze while handling window messages, which is where code injected from outside the app runs.
+- `processes` — processes started in the 15 minutes before the freeze, plus input-method and text-services processes with their start times.
+- `recovered` — written if the thread comes back, with how long it was stuck.
+
+Input methods that load a text-service DLL into every program (Tencent WeType, for example) are a known cause of this kind of cross-process freeze in other software, and the one freeze analysed so far had that DLL loaded. That is a lead, not a verdict: an `idle` step together with an input-method process that started just before the freeze would confirm it. Please attach the log when you [report a hang](https://github.com/saime428/ai-code-usage-tray/issues).
+
 ## Privacy and security
 
 - No transcripts, prompts, project paths or session titles are uploaded.
 - No browser cookies are read, and no Anthropic / OpenAI / xAI API key is needed.
 - If a local file is corrupt, locked or unreadable, the last snapshot is kept and marked stale.
 - OAuth login is optional. Local monitoring keeps working offline or when Anthropic rate-limits.
+- The hang log (`hang-log.jsonl`) stays on this machine. It holds timestamps, a step name, and process names with their start times — no usage data or session content.
 - Full details in the [Privacy Policy](PRIVACY.md).
 
 ## Code signing policy
@@ -178,13 +203,13 @@ npm run usage   # print today's usage in the terminal, no Electron needed
 npm run check-prices   # diff the price table against LiteLLM's cost map
 ```
 
-Build the Windows x64 portable executable:
+Build the Windows x64 installer and portable executable:
 
 ```powershell
 npm run dist
 ```
 
-The artifact lands in `dist/AI-Code-Usage-Tray-<version>-win-x64.exe`.
+Both land in `dist/`: `AI-Code-Usage-Tray-Setup-<version>-win-x64.exe` (installer) and `AI-Code-Usage-Tray-<version>-win-x64.exe` (portable). To update your own install, quit the running app and run the new Setup file.
 
 ### Project layout
 
@@ -195,6 +220,7 @@ lib/usage.js            Claude local usage and session parsing
 lib/codex-usage.js      Codex local usage and quota parsing
 lib/grok-usage.js       Grok local usage, official cost and weekly quota
 lib/claude-oauth.js     optional Claude OAuth / PKCE
+lib/hang-guard.js       hang log watchdog and not-responding instance lookup
 renderer/index.html     full panel
 renderer/floating.html  edge-docked floating bar
 hooks/                  optional Claude Code state hooks
@@ -209,14 +235,14 @@ npm run dist
 git status --short
 ```
 
-If `check-prices` reports drift, confirm it against the official pricing pages and update the table and `PRICE_SNAPSHOT` first. Bump the version in `package.json`, refresh the "What's new" section at the top of both READMEs, launch the portable build on a clean Windows machine, then create a GitHub Release with the `.exe` and its SHA-256.
+If `check-prices` reports drift, confirm it against the official pricing pages and update the table and `PRICE_SNAPSHOT` first. Bump the version in `package.json`, refresh the "What's new" section at the top of both READMEs, install the Setup build on a clean Windows machine, then create a GitHub Release with both `.exe` files and their SHA-256.
 
 ## Current limitations
 
 - Windows x64 only.
 - No auto-update yet.
 - The app UI is currently Chinese-only.
-- The portable build is not code-signed yet. The SignPath Foundation application and signing automation are in progress.
+- The builds are not code-signed yet. The SignPath Foundation application and signing automation are in progress.
 - Claude OAuth may be rate-limited by Anthropic or affected by your network egress. Local inference is unaffected.
 - Regular Claude Desktop Home chats expose no token detail, so only session state and quota percentages can be shown — no cost.
 - Grok sessions are CLI-only: no per-account tracking (no identity detection yet) and no click-to-open deep link.

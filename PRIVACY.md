@@ -23,9 +23,11 @@ The optional Claude account connection does not send transcript content. Anthrop
 
 Optional Claude OAuth credentials are encrypted with Electron `safeStorage` and stored in the application's local user-data directory. Disconnecting the Claude account deletes those stored credentials. Other preferences and generated status files remain on the local computer.
 
+If the application stops responding, a diagnostic log in the same directory records the time, the step that was running, and the names and start times of processes running at that moment. It stays on the local computer and is transferred only if the user chooses to attach it to a bug report.
+
 ## Deletion
 
-This is a portable application. Exit it and delete the executable to remove the program. Disconnect the Claude account first to remove its stored credentials; the application's local user-data directory may also be deleted to remove all preferences and cached state.
+Installed builds are removed from Windows Settings → Apps; portable builds are removed by exiting the application and deleting the executable. Disconnect the Claude account first to remove its stored credentials; the application's local user-data directory may also be deleted to remove all preferences and cached state.
 
 ## Contact
 
