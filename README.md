@@ -48,6 +48,7 @@
 - **Live activity ring.** While a session runs, that provider's segment of the floating bar is wrapped in a ring of travelling light: orange for Claude, mint for Codex, blue for Grok, and the warning colour when a session needs you. "Activity ring style" in the tray menu offers brand colours, rainbow or off; with "reduce motion" enabled system-wide it becomes a still glow.
 - **The ring does not wait for the 30s refresh.** The main process watches all three session directories and the hook status directory, and lights up within 0.4s of a write. A turn often finishes in well under 30 seconds, so a ring driven by the snapshot would mostly appear after the work was done.
 - **File events are re-checked against mtime.** A client renaming or migrating old session files fires the watch too, but the file itself is not new, so it does not count as running — Codex Desktop's session migration at startup used to spin the ring for 20 seconds on its own.
+- **The installer asks where to install.** The one-click build went to the per-user location without asking. It is now an assisted install with a directory page, still defaulting to per-user and still needing no admin rights.
 
 ### v1.3.2
 
@@ -86,7 +87,7 @@ Older versions are listed under [Releases](https://github.com/saime428/ai-code-u
 ## Quick start
 
 1. Open [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest).
-2. Download the installer `AI-Code-Usage-Tray-Setup-*-win-x64.exe` and run it. It installs for the current user under `%LOCALAPPDATA%\Programs` (no admin rights), adds desktop and Start menu shortcuts and starts the app. Uninstall it from Windows Settings → Apps; settings and the account ledger in `%APPDATA%\ai-code-usage-tray` are kept.
+2. Download the installer `AI-Code-Usage-Tray-Setup-*-win-x64.exe` and run it. It asks where to install, defaulting to the current user under `%LOCALAPPDATA%\Programs` (no admin rights; choosing all users needs them). It adds desktop and Start menu shortcuts and starts the app. Uninstall it from Windows Settings → Apps; settings and the account ledger in `%APPDATA%\ai-code-usage-tray` are kept.
 3. Click the floating bar or tray icon to open the full panel.
 4. Right-click the floating bar or tray icon to refresh, toggle launch-at-login, change the activity ring style, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
 
