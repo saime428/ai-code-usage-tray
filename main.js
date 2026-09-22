@@ -29,6 +29,7 @@ const {
 } = require('./lib/account-ledger');
 const { sessionTarget } = require('./lib/open-session');
 const { startFullscreenWatch } = require('./lib/fullscreen-watch');
+const { startActivityWatch } = require('./lib/activity');
 const { appendHangLog, parseTasklistPids, startHangWatch } = require('./lib/hang-guard');
 const { runValuePath, portableShouldYield } = require('./lib/auto-launch');
 const {
@@ -96,6 +97,7 @@ const DEFAULT_SETTINGS = {
   floatingEnabled: true,
   floatingPosition: 'top',
   floatingHideFullscreen: true,
+  floatingRingStyle: 'brand',
   claudeRangeDays: 1,
   codexRangeDays: 1,
   grokRangeDays: 1,
@@ -110,6 +112,8 @@ let floatingExpanded = false;
 let floatingCollapseTimer = null;
 let fullscreenActive = false;
 let fullscreenWatch = null;
+let activityWatch = null;
+let activity = { claude: '', codex: '', grok: '' };
 let settings = { ...DEFAULT_SETTINGS };
 let usageSnapshot = null;
 let refreshPromise = null;
@@ -259,6 +263,9 @@ function loadSettings() {
     settings.floatingEnabled = saved.floatingEnabled !== false;
     settings.floatingPosition = saved.floatingPosition === 'right' ? 'right' : 'top';
     settings.floatingHideFullscreen = saved.floatingHideFullscreen !== false;
+    settings.floatingRingStyle = ['rainbow', 'off'].includes(saved.floatingRingStyle)
+      ? saved.floatingRingStyle
+      : 'brand';
     const legacyRangeDays = normalizeRangeDays(saved.rangeDays);
     settings.claudeRangeDays = normalizeRangeDays(saved.claudeRangeDays, legacyRangeDays);
     settings.codexRangeDays = normalizeRangeDays(saved.codexRangeDays, legacyRangeDays);
@@ -792,6 +799,14 @@ function createPanelWindow() {
   });
 }
 
+function floatingState(expanded) {
+  return {
+    position: settings.floatingPosition,
+    expanded,
+    ringStyle: settings.floatingRingStyle,
+  };
+}
+
 function floatingBounds(expanded = floatingExpanded) {
   const { workArea } = screen.getPrimaryDisplay();
   const [width, height] = FLOATING_SIZE[settings.floatingPosition][expanded ? 'expanded' : 'collapsed'];
@@ -847,10 +862,7 @@ function setFloatingExpanded(expanded, reduceMotion = false) {
   floatingCollapseTimer = null;
   floatingExpanded = expanded;
   if (expanded || reduceMotion) floatingWin.setBounds(floatingBounds(expanded), false);
-  floatingWin.webContents.send('floating-state', {
-    position: settings.floatingPosition,
-    expanded,
-  });
+  floatingWin.webContents.send('floating-state', floatingState(expanded));
   keepWindowOnTop(floatingWin);
   if (!expanded && !reduceMotion) {
     floatingCollapseTimer = setTimeout(() => {
@@ -886,10 +898,8 @@ function createFloatingWindow() {
   });
   floatingWin.loadFile(path.join(__dirname, 'renderer', 'floating.html'));
   floatingWin.webContents.once('did-finish-load', () => {
-    floatingWin.webContents.send('floating-state', {
-      position: settings.floatingPosition,
-      expanded: false,
-    });
+    floatingWin.webContents.send('floating-state', floatingState(false));
+    floatingWin.webContents.send('floating-activity', activity);
     if (usageSnapshot) floatingWin.webContents.send('usage-updated', usageSnapshot);
     updateFloatingVisibility();
   });
@@ -1031,6 +1041,14 @@ function setFloatingHideFullscreen(enabled) {
   updateTrayMenu();
 }
 
+function setFloatingRingStyle(style) {
+  if (!['brand', 'rainbow', 'off'].includes(style)) return;
+  settings.floatingRingStyle = style;
+  saveSettings();
+  if (floatingWin) floatingWin.webContents.send('floating-state', floatingState(floatingExpanded));
+  updateTrayMenu();
+}
+
 function setFloatingPosition(position) {
   if (!['top', 'right'].includes(position)) return;
   clearTimeout(floatingCollapseTimer);
@@ -1040,7 +1058,7 @@ function setFloatingPosition(position) {
   saveSettings();
   if (floatingWin) {
     floatingWin.setBounds(floatingBounds(false), false);
-    floatingWin.webContents.send('floating-state', { position, expanded: false });
+    floatingWin.webContents.send('floating-state', floatingState(false));
   }
   updateTrayMenu();
 }
@@ -1143,6 +1161,19 @@ function quickMenuTemplate(includePaths) {
       click: (item) => setFloatingHideFullscreen(item.checked),
     },
     {
+      label: '流光环样式',
+      submenu: [
+        { label: '品牌色', style: 'brand' },
+        { label: '彩虹', style: 'rainbow' },
+        { label: '关闭', style: 'off' },
+      ].map(({ label, style }) => ({
+        label,
+        type: 'radio',
+        checked: settings.floatingRingStyle === style,
+        click: () => setFloatingRingStyle(style),
+      })),
+    },
+    {
       label: '悬浮条位置',
       submenu: [
         {
@@ -1221,6 +1252,15 @@ app.whenReady().then(() => {
     }
     if (panelWin && panelWin.isVisible()) positionPanel(panelAnchor);
   });
+  activityWatch = startActivityWatch({
+    onChange: (next) => {
+      activity = next;
+      if (floatingWin && !floatingWin.isDestroyed()) {
+        floatingWin.webContents.send('floating-activity', activity);
+      }
+    },
+  });
+  activity = activityWatch.current();
   refreshUsage();
   setInterval(refreshUsage, 30_000);
 });
@@ -1240,10 +1280,7 @@ ipcMain.handle('account-ledger-clear', async (event) => {
   clearAccountLedger();
   return refreshUsage();
 });
-ipcMain.handle('floating-state', () => ({
-  position: settings.floatingPosition,
-  expanded: floatingExpanded,
-}));
+ipcMain.handle('floating-state', () => floatingState(floatingExpanded));
 ipcMain.on('floating-expanded', (event, state) => {
   if (floatingWin && event.sender === floatingWin.webContents) {
     setFloatingExpanded(Boolean(state && state.expanded), Boolean(state && state.reduceMotion));
@@ -1299,6 +1336,10 @@ app.on('before-quit', () => {
   if (fullscreenWatch) {
     fullscreenWatch.stop();
     fullscreenWatch = null;
+  }
+  if (activityWatch) {
+    activityWatch.stop();
+    activityWatch = null;
   }
   clearTimeout(accountLedgerWriteTimer);
   accountLedgerWriteTimer = null;

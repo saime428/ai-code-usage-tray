@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('floating-state', listener);
     return () => ipcRenderer.removeListener('floating-state', listener);
   },
+  onFloatingActivity: (callback) => {
+    const listener = (_event, activity) => callback(activity);
+    ipcRenderer.on('floating-activity', listener);
+    return () => ipcRenderer.removeListener('floating-activity', listener);
+  },
   setFloatingExpanded: (expanded, reduceMotion = false) =>
     ipcRenderer.send('floating-expanded', { expanded, reduceMotion }),
   openPanel: () => ipcRenderer.send('open-panel'),

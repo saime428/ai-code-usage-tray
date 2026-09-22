@@ -18,6 +18,11 @@
       --warn: #d9a441;
       --danger: #e45858;
     }
+    /* 流光环:动画挂在 body 上、--sweep 声明为 inherits,环只是读它。
+       这样 render() 每 30 秒整块重写 innerHTML 时环不会重新开始转,
+       多家同时在跑也天然同步。没人在跑时 body 不带 busy-any,动画完全停。 */
+    @property --sweep { syntax: '<angle>'; inherits: true; initial-value: 0deg; }
+    @keyframes ring-sweep { to { --sweep: 360deg; } }
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
     body {
@@ -60,7 +65,7 @@
       visibility: visible;
       transition: opacity 140ms ease-out 90ms, transform 220ms ease-out, visibility 0s;
     }
-    .compact-provider { min-width: 0; display: flex; align-items: center; gap: 7px; }
+    .compact-provider { position: relative; min-width: 0; display: flex; align-items: center; gap: 7px; }
     .compact-provider + .compact-provider { padding-left: 14px; border-left: 1px solid #303038; }
     .brand { width: 20px; height: 20px; flex: none; fill: currentColor; }
     .brand.claude { color: var(--claude); }
@@ -72,6 +77,45 @@
     .dash { color: var(--muted); }
     .warning { color: var(--warn); font-weight: 700; }
     .stale { opacity: .62; }
+    body.busy-any { animation: ring-sweep 2.4s linear infinite; }
+    body.ring-off { animation: none; }
+    [data-provider='claude'] { --ring: var(--claude); }
+    [data-provider='codex'] { --ring: #9fe8c3; }
+    [data-provider='grok'] { --ring: #8fb7ff; }
+    .busy.attention { --ring: var(--warn); }
+    .busy::before {
+      content: '';
+      position: absolute;
+      padding: 1.4px;
+      pointer-events: none;
+      background: conic-gradient(from var(--sweep), transparent 0 58%, color-mix(in srgb, var(--ring) 55%, transparent) 72%, #fff2 80%, var(--ring) 88%, transparent 96% 100%);
+      /* 中间挖空只剩一圈边 */
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+    }
+    .busy::after {
+      content: '';
+      position: absolute;
+      pointer-events: none;
+      border: 1px solid color-mix(in srgb, var(--ring) 26%, transparent);
+      box-shadow: 0 0 10px -2px color-mix(in srgb, var(--ring) 70%, transparent), inset 0 0 8px -5px var(--ring);
+    }
+    /* 收起态挤在 38px 高的条里:外扩 3px 正好落在 padding 的空隙上,不会被 clip-path 切掉 */
+    .compact-provider.busy::before, .compact-provider.busy::after { inset: -3px -5px; border-radius: 9px; }
+    .provider.busy::before, .provider.busy::after { inset: -2px; border-radius: 10px; }
+    /* 竖排时收起态只有 54px 宽,左右各 5px padding:横向只能外扩 1px */
+    body.position-right .compact-provider.busy::before,
+    body.position-right .compact-provider.busy::after { inset: -4px -1px; }
+    body.ring-rainbow .busy:not(.attention)::before {
+      background: conic-gradient(from var(--sweep), transparent 0 50%, #ff8a4c 62%, #ffd166 70%, #7ee0a8 78%, #6aa9ff 86%, transparent 94% 100%);
+    }
+    body.ring-rainbow .busy:not(.attention)::after {
+      border-color: #ffffff1f;
+      box-shadow: 0 0 10px -3px #ff8a4c99;
+    }
+    body.ring-off .busy::before, body.ring-off .busy::after { display: none; }
     .details {
       position: absolute;
       inset: 0;
@@ -98,6 +142,7 @@
       transition: opacity 220ms ease-out 120ms, transform 280ms cubic-bezier(.23, 1, .32, 1) 100ms, visibility 0s;
     }
     .provider {
+      position: relative;
       min-width: 0;
       padding: 10px;
       border: 1px solid #2b2b33;
@@ -148,6 +193,10 @@
     body.position-right .provider-status { margin-top: 5px; }
     @media (prefers-reduced-motion: reduce) {
       #surface, #surface::after, .compact, .details, body.expanded #surface, body.expanded .compact, body.expanded .details { transition: none; }
+      /* 不转、也不呼吸:留一圈静态的光,状态照样看得见 */
+      body.busy-any { animation: none; }
+      .busy::before { background: color-mix(in srgb, var(--ring) 55%, transparent); }
+      body.ring-rainbow .busy:not(.attention)::before { background: linear-gradient(90deg, #ff8a4c, #ffd166, #7ee0a8, #6aa9ff); }
     }
   </style>
 </head>
@@ -163,6 +212,9 @@
       grok: { name: 'Grok', logo: 'grok', logoClass: 'grok' },
     };
     let latest = null;
+    let activity = {};
+    let ringStyle = null;
+    let previewTimer = null;
     let expanded = false;
     let expandTimer = null;
     let collapseTimer = null;
@@ -238,7 +290,7 @@
           const usage = latest[provider];
           const windows = windowsFor(provider, usage);
           const tokens = tokenUsage(provider, usage);
-          return `<div class="compact-provider ${isStale(usage) ? 'stale' : ''}">
+          return `<div class="compact-provider ${isStale(usage) ? 'stale' : ''}" data-provider="${provider}">
             ${logo(provider)}
             <div class="metrics">${windows.length
               ? windows.map(([label, value]) => `<span class="metric"><b>${label}</b>${Math.round(value.usedPercentage)}%</span>`).join('')
@@ -257,7 +309,7 @@
           const windows = windowsFor(provider, usage);
           const tokens = tokenUsage(provider, usage);
           const stale = isStale(usage);
-          return `<section class="provider ${stale ? 'stale' : ''}">
+          return `<section class="provider ${stale ? 'stale' : ''}" data-provider="${provider}">
             <div class="provider-head">${logo(provider)}<span class="provider-name">${info.name}</span>
               <span class="cost"><small>${rangeLabel(usage)}${provider === 'grok' ? '金额' : '等价值'}</small> ${costText(provider, usage)}</span></div>
             ${windows.length ? windows.map(([label, value]) => {
@@ -274,6 +326,25 @@
           </section>`;
         })
         .join('');
+      applyActivity();
+    }
+
+    // 环的开关和快照分开走:快照 30 秒一次,活动状态由主进程 watch 到写入就推过来
+    function applyActivity() {
+      for (const element of document.querySelectorAll('[data-provider]')) {
+        const state = activity[element.dataset.provider] || '';
+        element.classList.toggle('busy', Boolean(state));
+        element.classList.toggle('attention', state === 'attention');
+      }
+      document.body.classList.toggle('busy-any', Object.values(activity).some(Boolean));
+    }
+
+    // 换样式时多半没人在跑,环是灭的,看着像菜单没生效:先点亮两秒给个预览
+    function previewRings() {
+      clearTimeout(previewTimer);
+      for (const element of document.querySelectorAll('[data-provider]')) element.classList.add('busy');
+      document.body.classList.add('busy-any');
+      previewTimer = setTimeout(applyActivity, 2000);
     }
 
     function applyState(state) {
@@ -281,6 +352,11 @@
       document.body.classList.toggle('expanded', expanded);
       document.body.classList.toggle('position-top', state.position === 'top');
       document.body.classList.toggle('position-right', state.position === 'right');
+      document.body.classList.toggle('ring-rainbow', state.ringStyle === 'rainbow');
+      document.body.classList.toggle('ring-off', state.ringStyle === 'off');
+      const style = state.ringStyle || 'brand';
+      if (ringStyle !== null && style !== ringStyle) previewRings();
+      ringStyle = style;
     }
 
     const surface = document.getElementById('surface');
@@ -298,6 +374,7 @@
     window.api.getUsage().then((usage) => { latest = usage; render(); });
     window.api.getFloatingState().then(applyState);
     window.api.onFloatingState?.(applyState);
+    window.api.onFloatingActivity?.((next) => { activity = next || {}; applyActivity(); });
   </script>
 </body>
 </html>

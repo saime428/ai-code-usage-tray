@@ -36,11 +36,18 @@
 | **Quota windows** | 5h / 7d usage percentages, reset times and data freshness. With a Claude account connected, the Fable window appears when available. |
 | **Per-account usage** | Once enabled on this machine, tokens accumulate under the current account; older records stay out. The ledger is encrypted locally by Windows. |
 | **Session states** | Working, needs attention, and idle. Desktop sessions open straight from the panel. |
+| **Live activity ring** | While a session is running, that provider lights up with a ring of travelling light on the floating bar. It watches session directories for writes instead of waiting for the 30s refresh. Switch it to rainbow or turn it off. |
 | **Edge-docked floating bar** | Docks to the top or right edge, expands on hover; auto-hides over fullscreen apps (exclusive or borderless-fullscreen games, videos, presentations), and the tray menu can turn that off. |
 | **Local-first** | By default it only reads data the clients already wrote on this machine. No prompts or session content are uploaded. |
 | **Zero API keys** | Local mode needs no API key. Claude OAuth is optional, for more accurate quotas. |
 
 ## What's new
+
+### v1.4.0
+
+- **Live activity ring.** While a session runs, that provider's segment of the floating bar is wrapped in a ring of travelling light: orange for Claude, mint for Codex, blue for Grok, and the warning colour when a session needs you. "Activity ring style" in the tray menu offers brand colours, rainbow or off; with "reduce motion" enabled system-wide it becomes a still glow.
+- **The ring does not wait for the 30s refresh.** The main process watches all three session directories and the hook status directory, and lights up within 0.4s of a write. A turn often finishes in well under 30 seconds, so a ring driven by the snapshot would mostly appear after the work was done.
+- **File events are re-checked against mtime.** A client renaming or migrating old session files fires the watch too, but the file itself is not new, so it does not count as running — Codex Desktop's session migration at startup used to spin the ring for 20 seconds on its own.
 
 ### v1.3.2
 
@@ -81,7 +88,7 @@ Older versions are listed under [Releases](https://github.com/saime428/ai-code-u
 1. Open [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest).
 2. Download the installer `AI-Code-Usage-Tray-Setup-*-win-x64.exe` and run it. It installs for the current user under `%LOCALAPPDATA%\Programs` (no admin rights), adds desktop and Start menu shortcuts and starts the app. Uninstall it from Windows Settings → Apps; settings and the account ledger in `%APPDATA%\ai-code-usage-tray` are kept.
 3. Click the floating bar or tray icon to open the full panel.
-4. Right-click the floating bar or tray icon to refresh, toggle launch-at-login, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
+4. Right-click the floating bar or tray icon to refresh, toggle launch-at-login, change the activity ring style, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
 
 Prefer not to install? `AI-Code-Usage-Tray-*-win-x64.exe` (no `Setup` in the name) is the portable build: double-click to run. It unpacks itself to a new temporary folder on every launch, so it starts slower, and Windows may treat its tray icon as a new program each time.
 
@@ -152,6 +159,18 @@ Row keys are the model id **without** a date suffix (`claude-opus-5`, not `claud
 | ⚫ | Idle | no recent activity |
 
 With the optional Claude CLI hooks installed, working / attention / idle become precise; without them the state falls back to transcript write times. A freshly written transcript overrides a stale hook so a running session never shows an old state. A hook silent for more than 30 minutes falls back to idle.
+
+### The activity ring
+
+While a session runs, its segment of the floating bar is wrapped in a ring of travelling light: orange for Claude, mint for Codex, blue for Grok, and the warning colour when a session needs you. "Activity ring style" in the tray menu switches it to rainbow or turns it off; with "reduce motion" enabled system-wide it becomes a still glow.
+
+The ring does not wait for the 30s snapshot. The main process watches `~/.claude/projects`, `~/.codex/sessions`, `~/.grok/sessions` and the hook status directory, and lights up within 0.4s of a write (`lib/activity.js`):
+
+- Claude sessions with hooks installed follow the hook's working / needs-attention state, which is exact.
+- Sessions without hooks, plus Codex and Grok, fall back to "wrote to disk in the last 20 seconds" — so the ring can blink during a long think with no disk writes, and stays lit for up to 20s after a turn ends. Tune `WRITE_ACTIVE_MS` in `lib/activity.js`.
+- Every file event is re-checked against the file's mtime: a client renaming or migrating old session files also fires the watch, but the file itself is not new, so it does not count as running.
+
+Switching styles while nothing is running would show no difference, so a style change lights all three rings for two seconds as a preview.
 
 ### Enabling hooks (optional)
 
@@ -237,6 +256,7 @@ lib/grok-usage.js       Grok local usage, official cost and weekly quota
 lib/claude-oauth.js     optional Claude OAuth / PKCE
 lib/hang-guard.js       hang log watchdog and not-responding instance lookup
 renderer/index.html     full panel
+lib/activity.js         activity watch behind the ring (session writes + hook state)
 renderer/floating.html  edge-docked floating bar
 hooks/                  optional Claude Code state hooks
 ```

@@ -27,6 +27,7 @@ Claude Code 把每个会话的转录写在 `~/.claude/projects/<目录名>/<sess
 - `lib/claude-oauth.js` — Claude 浏览器 PKCE 授权（固定网页回调 + 手动粘贴登录码）、令牌刷新和官方额度响应解析；令牌本身由主进程通过 Electron `safeStorage` 保存。
 - `lib/auto-launch.js` — 开机自启条目的纯判断:解析 `reg query` 输出里的 exe 路径、判断便携版该不该让出已有条目。
 - `lib/hang-guard.js` — 主线程挂起看门狗(worker 线程读共享内存心跳,停跳超 15 秒写 `userData/hang-log.jsonl`)和「未响应」同名实例查找;`main.js` 用它在抢单实例锁之前结束卡死实例,并给同步跨进程调用打步骤标记。
+- `lib/activity.js` — 悬浮条流光环的快车道:`fs.watch` 三个会话根目录 + hook 状态目录,合并 400ms 后算出每家在不在跑,只在变化时推 IPC。不解析 transcript,跟 30s 快照完全分开。
 - `preload.js` + `renderer/index.html` / `floating.html` — contextBridge 暴露最小 IPC,两套无框架 UI 共用同一份用量快照。
 
 ## 命令
@@ -45,6 +46,7 @@ npm run dist      # 测试后生成 Windows x64 一键安装包(Setup)和便携�
 - [x] **Claude 账户连接**:可选浏览器 OAuth,使用 Claude Code 当前固定网页回调并粘贴登录码,令牌仅由本应用加密保存,每 5 分钟读取官方重置时间并自动刷新过期令牌。
 - [x] **Codex 支持**:读取 Desktop/CLI 共用的 `~/.codex/sessions`,展示 token、模型、真实额度窗口和会话来源。
 - [x] **Grok 支持**:读取 `~/.grok/sessions` 的逐轮用量和官方结算费用,以及本地日志里的订阅周额度;暂不接分账号账本(缺身份识别)和会话跳转(CLI 无深链)。
+- [x] **任务流光环**:有会话在跑时,悬浮条上那一家绕一圈流动的光(品牌色/彩虹/关,托盘菜单选)。环靠 `lib/activity.js` 的 watch 驱动,不等 30s 快照——一轮对话常常跑不满 30 秒,等快照的话环基本只在任务结束后才亮。
 - [x] **贴边悬浮条**:主屏顶部/右侧可选,5h/7d 收起态、悬停详情,与托盘面板共享刷新。全屏应用时默认自动隐藏(托盘菜单可关):`lib/fullscreen-watch.js` 常驻 PowerShell 轮询 `SHQueryUserNotificationState`,它复用资源管理器的 rude-app 判定:独占全屏、演示模式、以及盖满整个显示器的无边框窗口(游戏的无边框窗口化)都算全屏,普通最大化窗口(任务栏仍可见)不算——实测返回值分别为 2 和 5。v1.0 曾用前台窗口矩形自判,在 f07254a 被移除,原因未记录。
 - [x] **Desktop 会话跳转**:Codex 精确打开 task;Claude 有 bridge id 时精确打开,否则复制标题并唤起客户端;CLI 不启动终端。
 - [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 一键安装包(按用户安装,主推)和便携版;README.md 为英文主页,README.zh-CN.md 为中文版,顶部互挂切换链接。
@@ -77,4 +79,9 @@ npm run dist      # 测试后生成 Windows x64 一键安装包(Setup)和便携�
   - 同一天发现的老问题:`getClaudeOAuthRateLimits` 以前只在**成功**后缓存 5 分钟,失败(429)后每次 30 秒刷新都会重试,被限流时会一直续上限流,Fable 额度一直不显示(面板显示「Claude 暂时限制了额度查询」,额度来源退回 `desktop`)。现在按「下次允许尝试时间」节流(`lib/claude-oauth.js` 的 `nextUsageAttemptAt` / `usageThrottled`):成功失败都至少隔 5 分钟,响应带 `Retry-After` 时照它等、封顶 24 小时——**只防荒谬值**。v1.3.0 封的是 1 小时,服务端要求更久时就每小时主动撞一次,限流永远解不开:实测 `Retry-After` 从 1350 秒累进到 3600 秒以上,应用安静运行两个半小时仍是 429。失败后的等待期写进 `userData/claude-oauth-throttle.json`,冷启动也遵守,用户"重启试试"不会再撞一次;这个文件同时记着上次请求的状态码和 `Retry-After`,不用抓包就能看。成功只记状态不记等待,重启后照常请求。`usageThrottled` 把剩余时间超过封顶的情况当成已过期,系统时间被往回调也不会卡死。面板的限流提示也相应改成「稍后会自动重试」;登录完成时的 `force` 请求不受影响。测试时反复重启应用会丢掉内存缓存、每次启动都请求一次,是那次触发限流的直接原因——**验证时别频繁重启已连接 Claude 账户的实例**。排查方法:带 `--remote-debugging-port` 启动,通过 CDP 读面板渲染进程里的 `latest.claude.auth` 和 `latest.claude.rateLimits`(不含令牌);要数请求次数再加 `--log-net-log=<文件>`,主进程的 `net.fetch` 走 Chromium 网络栈,每次请求都会记成一条带 URL 的 `URL_REQUEST_START_JOB` 事件。
   - 2026-09-16 限流解除后露出的下一层:取额度回 401 → 刷新令牌 → 令牌接口回 `400 "Refresh token expired"`。两天里每次请求都被 429 挡在入口,访问令牌(8 小时)过期后从来没走到 401,刷新一次都没发生,刷新令牌自己也过期了——程序救不回来,只能用户重新登录。`refreshAccessToken` 遇到 400/401/403 给错误打 `loginExpired`:`nextUsageAttemptAt` 直接等到封顶(别再每 5 分钟撞两次接口),`claudeAuthErrorMessage` 提示「登录已过期」;登录完成的 `force` 请求会重置。刷新令牌的具体寿命未知(至少不到两天不用就会死);真要防这个,得在取额度被限流期间也按 `expiresAt` 主动刷新——目前没做,先看会不会再遇到。
   - 本地打包前先退出正在运行的**同版本**便携版:它的壳进程锁着 `dist` 里同名 exe,`npm run dist` 会卡住且不报错。
+- **流光环的两个坑**(都在 `renderer/floating.html`):动画挂在 `body` 上、`--sweep` 用 `@property` 声明成 `inherits: true`,环只是读这个变量。`render()` 每 30 秒整块重写 `innerHTML`,动画要是挂在环自己身上,每次重写都会从头开始转(实测挂 body 时重写前后角度 74°→183° 连续);多家同时在跑也靠这个天然同步。环外扩 `-3px -5px` 是算过的:收起态 38px 高的条里上下各 5px padding,再大就被 `#surface` 的 `clip-path` 切掉。
+- **watch 事件不等于有新内容**:2026-09-21 应用刚启动时 Codex 的环平白转了 20 秒,但那一小时里 `~/.codex/sessions` 下没有任何 `.jsonl` 被写过(`find -mmin -60` 为空,最新的 mtime 停在 04:21),Codex Desktop 当时在做会话迁移/重命名(`rollout-migrations`、`archived_sessions` 都有动静)。现在每个事件都用 `fs.statSync` 复核 mtime:实测真正的追加写 mtime 是同步更新的(25 次事件年龄全是 0–2ms),所以「文件本身不新」就不算在跑。同一次排查还证伪了两件事:**读文件不会触发事件**(一次读了 209 个 codex 文件,零事件,libuv 的 LAST_ACCESS 在这台机器上没用),**应用自己从不写这三个目录**。
+- 换流光环样式时多半没人在跑,环是灭的,用户会以为菜单没生效(2026-09-21 就这么报了一次)。`applyState` 发现样式真的变了就把三个环点亮两秒当预览;首次加载不触发,否则每次 hover 发 `floating-state` 都要闪一下。
+- 没有 hook 的会话(以及 Codex、Grok)只能按「最近 20 秒写过盘」判断在不在跑(`WRITE_ACTIVE_MS`):长时间思考不落盘时环会闪,任务结束后多亮最多 20 秒。要精确熄灭就得在 watch 事件里读改动文件的尾行——Grok 有 `turn_completed`、Codex 有 `token_count`,都是现成的回合结束标记。hook 说 working 但 15 分钟没有新写入也会熄灭,因为崩溃的会话不会补 Stop。
+- 托盘图标和主面板的会话列表仍然只跟 30s 快照,没接快车道:16px 的图标和要展开才看的列表不值得为延迟多一条链路。
 - 用 Electron 而不是 Tauri:纯 JS 栈好维护,体积大但这是开发者工具,无所谓。
