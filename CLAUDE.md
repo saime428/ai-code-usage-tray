@@ -15,7 +15,7 @@ Claude Code 把每个会话的转录写在 `~/.claude/projects/<目录名>/<sess
 - 每行一个 JSON。`type: "assistant"` 的行带 `message.model`、`message.usage`、`timestamp`(UTC ISO)、`cwd`。
 - `usage` 字段:`input_tokens`、`output_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`。
 - 流式输出会用同一个 `message.id` 重写多行,**必须按 id 去重取最后一条**(lib/usage.js 已处理)。
-- 定价表在 `lib/usage.js` 的 `PRICES`(官方标准 API 价快照,核对日期见 `PRICE_SNAPSHOT`;5 分钟 cache 写 1.25x、1 小时写 2x、cache 读默认 0.1x)。订阅用户不按 token 计费,所以 UI 上标注为「等价 API 价值」。
+- 定价表在 `lib/prices.json`(官方标准 API 价快照,核对日期见其中的 `snapshot`;5 分钟 cache 写 1.25x、1 小时写 2x、cache 读默认 0.1x),应用运行时还会从 GitHub main 下载同一个文件,见下面「已知取舍」的价格表一条。订阅用户不按 token 计费,所以 UI 上标注为「等价 API 价值」。
 - Codex Desktop 与 CLI 都把会话写在 `~/.codex/sessions/**/*.jsonl`;`turn_context` 给出模型,`token_count` 给出累计 token 和真实额度窗口。`lib/codex-usage.js` 按相邻累计值做差,同时覆盖两种客户端,并按 OpenAI 官方 API 价格计算等价价值。
 - Claude Desktop 会话元数据位于 `%APPDATA%/Claude/claude-code-sessions/**/*.json`;用 `cliSessionId` 关联 transcript,并通过 `claude://resume?session=<cliSessionId>` 直接打开对应会话。
 - Grok CLI 把会话写在 `~/.grok/sessions/<url编码cwd>/<会话id>/`:`updates.jsonl` 的 `turn_completed` 事件带**逐轮** token(`modelUsage` 按模型细分)和官方结算费用 `costUsdTicks`(1 USD = 10^10 ticks,含缓存折扣,不需要本地价格表);`summary.json` 带标题/模型/cwd/活动时间。`~/.grok/logs/unified.jsonl` 里 CLI 自己记录 `billing: fetched credits config`,含订阅周额度百分比、周期起止和套餐名。**`creditUsagePercent` 为 0 时该字段整个不出现**(proto3 丢默认值),所以字段缺失要当 0 读,不能当"未知"隐藏——本机 122 条记录里它从来不是字面 0,而 17 次缺失全落在计费周期头几天。2026-09-09 新周期开始时额度整块消失就是这个原因。这份额度正是 2026-08-17 调研文档认为"没有公开 API"的 SuperGrok 周额度,CLI 落了本地盘就能直接读。
@@ -27,6 +27,7 @@ Claude Code 把每个会话的转录写在 `~/.claude/projects/<目录名>/<sess
 - `lib/claude-oauth.js` — Claude 浏览器 PKCE 授权（固定网页回调 + 手动粘贴登录码）、令牌刷新和官方额度响应解析；令牌本身由主进程通过 Electron `safeStorage` 保存。
 - `lib/auto-launch.js` — 开机自启条目的纯判断:解析 `reg query` 输出里的 exe 路径、判断便携版该不该让出已有条目。
 - `lib/hang-guard.js` — 主线程挂起看门狗(worker 线程读共享内存心跳,停跳超 15 秒写 `userData/hang-log.jsonl`)和「未响应」同名实例查找;`main.js` 用它在抢单实例锁之前结束卡死实例,并给同步跨进程调用打步骤标记。
+- `lib/prices.json` + `lib/prices.js` — Claude / Codex 价格表和它的校验。表随应用打包,主进程启动 10 秒后和每天从 main 拉同一个文件(失败后每小时重试:开机自启时网络常常还没连上),`acceptPrices` 校验通过且不比手上的旧才换;worker 每次刷新随消息收到当前的表。
 - `lib/activity.js` — 悬浮条流光环的快车道:`fs.watch` 三个会话根目录 + hook 状态目录,合并 400ms 后算出每家在不在跑,只在变化时推 IPC。不解析 transcript,跟 30s 快照完全分开。
 - `preload.js` + `renderer/index.html` / `floating.html` — contextBridge 暴露最小 IPC,两套无框架 UI 共用同一份用量快照。
 
@@ -51,6 +52,7 @@ npm run dist      # 测试后生成 Windows x64 一键安装包(Setup)和便携�
 - [x] **Desktop 会话跳转**:Codex 精确打开 task;Claude 有 bridge id 时精确打开,否则复制标题并唤起客户端;CLI 不启动终端。
 - [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 一键安装包(按用户安装,主推)和便携版;README.md 为英文主页,README.zh-CN.md 为中文版,顶部互挂切换链接。
 - [x] **公开发布**:MIT + GitHub 公开仓库 + v1.0.0 Release 已完成；后续再做干净 Windows 验证和社区收录。
+- [x] **价格表在线更新**(1.5.0):改价推 `lib/prices.json` 到 main,已安装的应用一天内用上,不用发版;托盘「自动更新价格表」可关。
 - [ ] 自动更新:首个 GitHub Release 稳定后接入版本检查与下载安装。
 - [ ] 增量读取:按文件记 byte offset,只读新增部分(目前每 30s 全量重读,转录很大时再做)。
 
@@ -60,8 +62,11 @@ npm run dist      # 测试后生成 Windows x64 一键安装包(Setup)和便携�
 - Claude Code 的 `statusLine` 只有一个命令槽;当前本机没有旧配置所以直接占用,发布安装器需检测并串联用户已有命令。
 - Desktop 用量历史是内部 v2 格式;超过 15 分钟后保留最后数据但降低透明度并明确标记过期。
 - Codex 金额是标准 API 等价价值,包含缓存读写和 >272K 长上下文倍率;订阅用户不会按该金额扣费。
-- 定价表是硬编码快照,新模型出来要手动加一行(`priceFor` 用前缀匹配,带日期后缀的 id 自动兼容)。两家厂商都只把价格发在 HTML 文档页,`/v1/models` 不带价格字段,所以没有官方接口可抓。`npm run check-prices` 拿 LiteLLM 的 `model_prices_and_context_window.json` 比对现有表并报告偏差(只报告不改写:社区维护的数据改金额显示前要人看一眼),CI 每周一跑一次。2026-09-06 那次核对发现 07-26 的快照抄成了 Sonnet 5「将来会涨到」的价,gpt-5.6-luna 更是高估 5 倍——这类错 `unknownModels` 抓不到,因为模型认识、只是价格错。
-  倍率现在都是表里的数据而不是散在代码里的 if:`cacheRead` 覆盖默认 0.1x(Fable/Mythos 5.1 是 0.025x),`fast` 是快速模式倍率(只有 Opus 5 / 4.8 有,4.7 直接报错、4.6 按标准价跑),`inference_geo: "us"` 再叠 1.1x。`priceFor` **取最长匹配**:`claude-opus-4`(15/75)是 `claude-opus-4-5`(5/25)的前缀,`claude-fable-5` 是 `claude-fable-5-1` 的前缀,先匹配会静默算错 3 倍。表的书写顺序因此不再影响结果——`lib/usage.test.js` 里那条 pricing 测试就是钉这个的。
+- 定价表是手工维护的快照(`lib/prices.json`),新模型出来要手动加一行(`priceFor` 用前缀匹配,带日期后缀的 id 自动兼容)。两家厂商都只把价格发在文档页,`/v1/models` 不带价格字段,所以没有官方接口可抓。
+  **1.5.0 起这个文件是公开契约**:已安装的应用启动 10 秒后和每天从 `raw.githubusercontent.com/.../main/lib/prices.json` 拉它(连不上换 jsDelivr),所以改价推 main 就行,不用发版。四条规矩写在 README「Updating the price table」:别挪路径、`snapshot` 写改动当天(回滚也是,旧于手上的表会被忽略,挡的是落后几小时的 jsDelivr;同一天第二次改动会被当成同版,镜像可能晚几小时才给到)、不删行(缺行按残缺拒收)、已有字段改含义就把 `schema` 加一(旧版本拒收、继续用手上的表;新增字段旧版本直接忽略,所以不用加)。**`snapshot` 写成未来日期会被拒收**(留 2 天时差):Fable 审查指出,手滑写成 2027 的表一旦被接受,之后每次修正日期都更小、全被当旧表拒掉,重启时缓存又赢过内置表,连发版都救不回;`validatePrices(BUNDLED)` 也在测试里,所以仓库里写了未来日期 `npm test` 直接红。收到了但不认的表(`error.rejected`,比如以后 schema 升级)等一天再查,只有网络失败才每小时重试;别名不能和真实行同名(`priceFor` 先查别名,会把那一行遮住)。Codex 的解析缓存里存着算好的金额,`cachedFile` 按表内容(`priceKey`,不是对象身份——worker 每次收到的是结构化克隆)判断能否复用,换表后每个文件重算一次;Claude 的金额在缓存之外算,不受影响。托盘关掉「自动更新价格表」只停止下载,已经在用的表不回退。
+  联网默认开是用户在 2026-09-27 选的。PRIVACY.md 原来那句加粗的「不会向其他网络系统传输任何信息」是 SignPath 给的默认句,默认开以后就不成立了,改成了逐条列出三种请求的隐私政策;SignPath 条款允许链接自己的隐私政策代替那句话,而「收集用户数据并外传才需要安装时告知和关闭选项」那条不适用于只下载公开文件。
+  `npm run check-prices` 现在先读官方页(Anthropic、OpenAI 价格页的 `.md` 版,每个价格格子都过真正的 `costOf`;再读 Codex 模型页的 `slug="..."`,凡是 Codex 可选的型号必须有行),再比对 LiteLLM 的 `model_prices_and_context_window.json`(只报告不改写:改金额显示前要人看一眼),CI 每周一跑一次。gpt-6-sol 以前一直算 0 而 checker 没报,就是因为旧版只核对表里已有的行;官方页那一遍补上的正是「整行缺失」。**本机跑要走代理**:两家都按地区拒绝(Anthropic 307 跳 `app-unavailable-in-region`、OpenAI 403),而 Node 的 `fetch` 不读系统代理——用 `NODE_USE_ENV_PROXY=1 npm run check-prices`(Node 24+,读 `HTTPS_PROXY`)。2026-09-27 第一次撞上时误判成「OpenAI 挡非浏览器 UA」,差点给脚本加伪装浏览器的 UA;用 curl 走同一个代理换 UA 一测就排除了。`officialPage` 要求响应是 `text/markdown`,因为地区跳转回的是 200 的 HTML,只看状态码会被当成「页面改版」。2026-09-06 那次核对发现 07-26 的快照抄成了 Sonnet 5「将来会涨到」的价,gpt-5.6-luna 更是高估 5 倍——这类错 `unknownModels` 抓不到,因为模型认识、只是价格错。
+  倍率现在都是表里的数据而不是散在代码里的 if:`cacheRead` 覆盖默认 0.1x(Fable/Mythos 5.1 是 0.025x),`fast` 是快速模式倍率(只有 Opus 5.5 / 5 / 4.8 有,4.7 直接报错、4.6 按标准价跑),`inference_geo: "us"` 再叠 1.1x。`priceFor` **取最长匹配**:`claude-opus-4`(15/75)是 `claude-opus-4-5`(5/25)的前缀,`claude-fable-5` 是 `claude-fable-5-1` 的前缀,先匹配会静默算错 3 倍。表的书写顺序因此不再影响结果——`lib/usage.test.js` 里那条 pricing 测试就是钉这个的。
   `normalizeModel` 认四种写法:裸 id、`anthropic/xxx`、云推理配置(`us|eu|apac|au|jp|global|us-gov.anthropic.xxx`,注意 `global` 6 个字母、`us-gov` 带连字符,正则别写成 `[a-z]{2,4}`)、Vertex 的 `xxx@20250929`。退役型号(Opus 4.1/4、Sonnet 4、Haiku 3.5)保留在表里,因为旧转录和 Bedrock/Vertex 还会出现。
   **区域推理配置加价 10%**(官方文档口径,`global.` 不加),`costOf` 按前缀判断;退役型号标 `legacy` 不吃这个加价,因为它们早于该计费方案、而且 Bedrock 对它们是另一套价(Haiku 3.5 在 Bedrock 是 $0.25 不是 $0.80,没建模)。上游数据里 `us-gov` 实测是 1.2x、还有个 `eu.…opus-4-5` 条目跟自己的 `us.` 兄弟自相矛盾——所以 checker 的第二遍**整体跳过区域 id**,它的职责是找缺失的型号行,不是追平台差价。
   checker 两遍:第一遍把每种 token 各 10 万个喂进真正的 `costOf` 跟上游费率对,这样 cache 读写倍率也一起验了(重新声明常量去比会漏);第二遍扫上游所有 id,凡是 `priceFor` 能解析但价格对不上的就报——`gpt-5.5-pro` 前缀命中 `gpt-5.5` 少算 6 倍就是这么抓出来的,`unknownModels` 和第一遍都看不见这类。上游 key 全改名导致一个都没验到时会直接 exit 1,避免绿灯空跑。

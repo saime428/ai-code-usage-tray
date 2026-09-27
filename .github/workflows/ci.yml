@@ -5,8 +5,9 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # Weekly price-table drift check. Prices move a few times a year; this is the
-    # reminder, since nobody remembers to reread two vendor pricing pages.
+    # Weekly price-table check against the vendors' own pricing pages and LiteLLM.
+    # Installed apps download lib/prices.json from main, so a fix pushed after this
+    # goes red reaches them within a day — no release needed.
     - cron: '17 6 * * 1'
   workflow_dispatch:
 
@@ -32,7 +33,7 @@ jobs:
           if-no-files-found: error
 
   # Deliberately not part of `npm test` or `npm run dist`: this one needs network,
-  # and neither tests nor offline builds should depend on a third-party repo.
+  # and neither tests nor offline builds should depend on third-party pages.
   # Scheduled only, so a flaky upstream can never redden a pull request.
   prices:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

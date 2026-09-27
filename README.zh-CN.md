@@ -23,7 +23,7 @@
 </p>
 
 > [!NOTE]
-> 面板里 Claude / Codex 的金额是按官方标准 API 价格计算的**等价值**（价格表的核对日期显示在面板底部），用来对照消耗快慢，订阅不会按这个金额扣费。Grok 的金额来自 Grok CLI 记录的官方结算值，订阅额度内同样不会另外扣费。
+> 面板里 Claude / Codex 的金额是按官方标准 API 价格计算的**等价值**（价格表会从本仓库自动更新，日期显示在面板底部），用来对照消耗快慢，订阅不会按这个金额扣费。Grok 的金额来自 Grok CLI 记录的官方结算值，订阅额度内同样不会另外扣费。
 >
 > Claude Desktop 的普通 Home 聊天，本机只有会话元数据和额度百分比，没有精确 token 明细，所以算不出金额。金额只统计本地有 transcript 的 Claude Code / Cowork 会话。连接 Claude 账户只会让额度和重置时间更准，补不齐 Home 聊天的 token。
 
@@ -38,10 +38,16 @@
 | **会话状态** | 区分工作中、需处理和空闲。Desktop 会话可以从面板打开。 |
 | **任务流光环** | 有会话在跑时，悬浮条上那一家会绕一圈流动的光；监听会话目录的写入，不等 30 秒刷新。样式可换成彩虹或关掉。 |
 | **贴边悬浮条** | 可贴在屏幕顶部或右侧，悬停展开；全屏应用（独占或无边框全屏的游戏、视频、演示）时自动隐藏，可在托盘菜单关闭该行为。 |
-| **本地优先** | 默认只读本机客户端已经写下的数据，不上传提示词或会话内容。 |
+| **本地优先** | 只读本机客户端已经写下的数据，不上传任何关于你的信息。不连接 Claude 账户的话，唯一的自动请求是从本仓库下载公开的价格表。 |
+| **价格自动跟进** | 新型号和改价在这里修正后一天内生效，不用装新版。托盘菜单可以关掉。 |
 | **零 API Key** | 本地模式不需要 API Key。Claude OAuth 是可选项，用来读更准的额度。 |
 
 ## 最新更新
+
+### v1.5.0
+
+- **价格表会自己更新**。价格表挪到了本仓库的 [`lib/prices.json`](lib/prices.json)，应用启动约 10 秒后和之后每天各下载一次，失败了每小时重试（开机自启时网络常常还没连上）。改价或新增型号推到这里，一天内就能到所有已安装的应用，不用装新版。下载的表必须校验通过、而且不比手上的旧才会用；联网失败时继续用上次下载的或应用内置的那份。请求不带任何关于你的信息，托盘菜单「自动更新价格表」可以关掉。见[金额是怎么算的](#金额是怎么算的)。
+- **每周的价格检查改读官方页面**。`npm run check-prices` 现在逐项比对 Anthropic、OpenAI 官方价格页上的每个价格，并检查 Codex 模型页上可选的每个型号在表里都有行。GPT-6 Sol、Luna 在 1.4.0 之前一直算 0，就是因为旧检查只核对表里已有的行。
 
 ### v1.4.0
 
@@ -89,7 +95,7 @@
 1. 打开 [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest)。
 2. 下载安装包 `AI-Code-Usage-Tray-Setup-*-win-x64.exe` 并运行。安装程序会问装在哪里，默认是当前用户的 `%LOCALAPPDATA%\Programs`（不需要管理员权限；选「所有用户」则需要管理员），创建桌面和开始菜单快捷方式，装完自动启动。卸载在 Windows 设置 → 应用 里进行，`%APPDATA%\ai-code-usage-tray` 下的设置和账号账本会保留。
 3. 单击悬浮条或托盘图标打开完整面板。
-4. 右键悬浮条或托盘图标，可以刷新、开机自启、切换流光环样式、切换顶部/右侧、隐藏悬浮条、切换全屏时自动隐藏或退出。
+4. 右键悬浮条或托盘图标，可以刷新、开机自启、开关价格表自动更新、切换流光环样式、切换顶部/右侧、隐藏悬浮条、切换全屏时自动隐藏或退出。
 
 不想安装？文件名里不带 `Setup` 的 `AI-Code-Usage-Tray-*-win-x64.exe` 是便携版，双击即可运行。它每次启动都会解压到一个新的临时目录，所以启动慢一些，Windows 也可能每次都把它的托盘图标当成新程序。
 
@@ -114,7 +120,7 @@ Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Clau
 
 ### 金额是怎么算的
 
-Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（`lib/usage.js`、`lib/codex-usage.js`），表上记着最后一次核对的日期，就是面板底部显示的「价格快照」。两家厂商都不提供机器可读的价格，所以这张表没法自己更新。它建模了：
+Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表 [`lib/prices.json`](lib/prices.json)，表上记着最后一次核对的日期，就是面板底部显示的「价格快照」。两家厂商都不提供机器可读的价格，所以表放在本仓库里维护，由应用来下载：启动约 10 秒后和之后每天各一次（失败后每小时重试），从 `raw.githubusercontent.com` 下载，连不上 GitHub 时改用 `cdn.jsdelivr.net`。下载的表必须通过校验（认识的 schema、数值合理、型号一个不少），而且不比手上正在用的旧，才会被采用；否则或者联网失败时，继续用上次下载成功的那份（`%APPDATA%\ai-code-usage-tray\prices.json`）或应用内置的那份。托盘菜单「自动更新价格表」可以关掉下载，已经在用的表保持不变。这张表建模了：
 
 - 提示缓存：写入 1.25x（5 分钟）/ 2x（1 小时），读取 0.1x——Claude Opus 5.5 为 0.05x，Claude Fable 5.1 / Mythos 5.1 为 0.025x。
 - Opus 5.5 / 5 / 4.8 的快速模式（2x）和 `inference_geo: "us"`（1.1x），逐条从转录里读。
@@ -124,23 +130,30 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（
 
 没有公开牌价的型号（比如 Codex 内部的 `codex-auto-review` 标签）会标成「不可用」并排除在合计之外，合计随之标为不完整，而不是猜一个数。
 
-`npm run check-prices` 会拿这张表和 LiteLLM 社区维护的价格表比对并报告差异，CI 每周跑一次。它只报告不改写：发现差异后到官方价格页确认，改表，再更新 `PRICE_SNAPSHOT`。
+`npm run check-prices` 会拿这张表和 Anthropic、OpenAI 自己的价格页比对（每一个价格，外加 Codex 模型页上的每个型号都必须有行），再和 LiteLLM 社区维护的价格表比对，CI 每周跑一次。它只报告不改写，改表的事由人来做。
 
 #### 更新价格表
 
-只涉及两个文件，别的都不用动。
+只涉及一个文件：[`lib/prices.json`](lib/prices.json)。把它推到 `main`，所有已安装的应用（1.5.0 及以后）一天内就会用上，不用发版。
 
 | 改什么 | 在哪 |
 | --- | --- |
-| Claude 价格 | `lib/usage.js` 里的 `PRICES` 对象。一个型号一行，单位是每百万 token 的美元：`'claude-opus-5': { input: 5, output: 25 }`。可选字段：`cacheRead`（缓存命中倍率，默认 0.1）、`fast`（快速模式倍率）、`legacy: true`（退役型号，不吃 Bedrock 区域加价）。 |
-| Codex 价格 | `lib/codex-usage.js` 里的 `PRICES` 对象：`'gpt-5.6-sol': { input: 4, cachedInput: 0.4, output: 20 }`。哪些型号该有一行，见它上方的注释。 |
-| 快照日期 | **两个文件**顶部附近的 `PRICE_SNAPSHOT` 常量。面板底部显示的就是它。 |
+| Claude 价格 | `claude` 一节。一个型号一行，单位是每百万 token 的美元：`"claude-opus-5": { "input": 5, "output": 25 }`。可选字段：`cacheRead`（缓存命中倍率，默认 0.1）、`fast`（快速模式倍率）、`legacy: true`（退役型号，不吃 Bedrock 区域加价）。 |
+| Codex 价格 | `codex` 一节：`"gpt-5.6-sol": { "input": 4, "cachedInput": 0.4, "output": 20 }`。哪些型号该有一行，写在 `lib/codex-usage.js` 顶部的注释里。`codexAliases` 把价格页写明是别名的 id 指到对应的行。 |
+| 快照日期 | `snapshot`。面板底部显示的就是它。 |
 
 行的 key 是**不带日期后缀**的模型 id（写 `claude-opus-5`，不写 `claude-opus-5-20260514`）。`priceFor` 按前缀匹配、最长的 key 胜出，所以 `claude-opus-4` 和 `claude-opus-4-5` 可以共存。如果新型号只是某个已有 key 的更长兄弟（比如 `gpt-5.5` 旁边出了 `gpt-5.5-pro`），必须单独加一行，否则它会静默按短 key 的价算——`npm run check-prices` 会以 `unlisted id` 一行报出来。
 
-1. `npm run check-prices`——每处差异一行：`文件  型号  字段  代码里的值 → 上游的值`。
-2. 到官方页核对：[Anthropic 价格](https://platform.claude.com/docs/en/about-claude/pricing)、[OpenAI 价格](https://developers.openai.com/api/docs/pricing)。LiteLLM 是社区数据，偶尔自相矛盾。
-3. 改对应的行，把两个文件的 `PRICE_SNAPSHOT` 改成当天日期，跑 `npm test`，提交。
+1. `npm run check-prices`——每处差异一行：`official  型号  字段  表里的值 → 官方的值`；LiteLLM 的差异行开头是 `claude` 或 `codex`。两家厂商都会拒绝部分地区，而 Node 的 `fetch` 不走系统代理；在代理后面跑的话用 `NODE_USE_ENV_PROXY=1 npm run check-prices`（Node 24+，读 `HTTPS_PROXY`）。
+2. `official` 开头的行直接来自厂商页面。LiteLLM 的行也要到官方页确认：[Anthropic 价格](https://platform.claude.com/docs/en/about-claude/pricing)、[OpenAI 价格](https://developers.openai.com/api/docs/pricing)。LiteLLM 是社区数据，偶尔自相矛盾。
+3. 改对应的行，把 `snapshot` 改成当天日期，跑 `npm test`，提交并推到 `main`。
+
+已安装的应用都依赖这个文件，所以有四条规矩：
+
+- 别挪路径。它们下载的就是 `main` 上的 `lib/prices.json`。
+- `snapshot` 写改动当天的日期，回滚也一样——比手上正在用的旧的表会被忽略。不能写未来日期：应用会拒收，因为它会压过之后的每一次修正。
+- 不删行。退役型号还要给旧转录计价，而且缺行的表会被当成残缺的拒掉。
+- 新增可选字段没问题（旧版本会忽略）。如果某个已有字段的含义变了，要把 `schema` 加一：旧版本会继续用手上的表，而不是读错新表。
 
 **你会怎么知道。** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 里的 `prices` 任务每周一 06:17 UTC 跑一次，有差异就失败。GitHub 会把失败通知发给**最后一次改动该文件 `cron:` 那行的提交者**——邮件还是站内，取决于 [Settings → Notifications → Actions](https://github.com/settings/notifications)（确认那里的 Actions 通知是开着的，只选「失败时」就够）。也可以随时到 Actions 页点 **Run workflow** 手动跑。仓库 60 天没有任何活动时 GitHub 会暂停定时任务，到 Actions 页重新启用即可。
 
@@ -209,6 +222,7 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（
 ## 隐私与安全
 
 - 不上传 transcript、提示词、项目路径或会话标题。
+- 除了可选的 Claude 账户（会向 Anthropic 查询额度），唯一的自动联网请求是从本仓库下载公开的价格表（`lib/prices.json`），启动时和之后每天各一次（失败后每小时重试）。它不发送任何关于你的信息，服务器看到的只是一次普通下载。托盘菜单「自动更新价格表」可以关掉。
 - 不读浏览器 Cookie，也不需要 Anthropic / OpenAI / xAI API Key。
 - 本地文件损坏、被锁或权限不够时，会留下上一份快照，并标成过期。
 - OAuth 登录是可选项。网络不通或碰到 Anthropic 限流时，本地用量监控照常工作。
@@ -234,7 +248,7 @@ npm ci
 npm test
 npm start
 npm run usage   # 终端打印今日用量，不启动 Electron
-npm run check-prices   # 把价格表和 LiteLLM 价格表比对
+npm run check-prices   # 把价格表和厂商官方页、LiteLLM 比对
 ```
 
 生成 Windows x64 安装包和便携版：
@@ -252,6 +266,8 @@ main.js                 Electron 主进程、托盘、窗口与刷新调度
 preload.js              受限 IPC bridge
 lib/usage.js            Claude 本地用量与会话解析
 lib/codex-usage.js      Codex 本地用量与额度解析
+lib/prices.json         Claude / Codex 价格表（应用也会从 main 下载它）
+lib/prices.js           价格表校验，以及下载它的地址
 lib/grok-usage.js       Grok 本地用量、官方金额与周额度解析
 lib/claude-oauth.js     可选 Claude OAuth / PKCE
 lib/hang-guard.js       挂起记录看门狗与未响应实例查找
@@ -270,12 +286,12 @@ npm run dist
 git status --short
 ```
 
-如果 `check-prices` 报告差异，先到官方价格页确认，更新价格表和 `PRICE_SNAPSHOT`。更新 `package.json` 版本和 README 顶部的「最新更新」小节，在干净的 Windows 环境里安装 Setup 版验证，再创建 GitHub Release，上传两个 `.exe` 及各自的 SHA-256。
+改价不需要发版，见[更新价格表](#更新价格表)。发版时：更新 `package.json` 版本和 README 顶部的「最新更新」小节，在干净的 Windows 环境里安装 Setup 版验证，再创建 GitHub Release，上传两个 `.exe` 及各自的 SHA-256。
 
 ## 当前限制
 
 - 仅支持 Windows x64。
-- 还没有自动更新。
+- 应用本身还不会自动更新，会自动更新的只有价格表。
 - 安装包和便携版都还没做代码签名。SignPath Foundation 的申请和自动签名都还在进行中。
 - Claude OAuth 可能被 Anthropic 限流，也可能受当前网络出口影响。本地推算不受影响。
 - Claude Desktop 普通 Home 聊天读不到精确 token 明细，只能显示会话状态和额度百分比，算不出金额。

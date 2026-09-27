@@ -23,7 +23,7 @@
 </p>
 
 > [!NOTE]
-> For Claude and Codex, the cost shown is an **API-equivalent value** computed from official standard API prices (the table's verification date is shown at the bottom of the panel) — a way to compare burn rates. Subscriptions are not billed by this amount. Grok's cost comes from the official billed value recorded by Grok CLI; within your subscription quota it does not cost extra either.
+> For Claude and Codex, the cost shown is an **API-equivalent value** computed from official standard API prices (the price table updates itself from this repository; its date is shown at the bottom of the panel) — a way to compare burn rates. Subscriptions are not billed by this amount. Grok's cost comes from the official billed value recorded by Grok CLI; within your subscription quota it does not cost extra either.
 >
 > Regular Claude Desktop Home chats only leave session metadata and quota percentages on disk, with no token detail, so no cost can be computed for them. Cost only covers Claude Code / Cowork sessions that have a local transcript. Connecting a Claude account improves quota and reset accuracy but cannot fill in Home-chat tokens.
 
@@ -38,10 +38,16 @@
 | **Session states** | Working, needs attention, and idle. Desktop sessions open straight from the panel. |
 | **Live activity ring** | While a session is running, that provider lights up with a ring of travelling light on the floating bar. It watches session directories for writes instead of waiting for the 30s refresh. Switch it to rainbow or turn it off. |
 | **Edge-docked floating bar** | Docks to the top or right edge, expands on hover; auto-hides over fullscreen apps (exclusive or borderless-fullscreen games, videos, presentations), and the tray menu can turn that off. |
-| **Local-first** | By default it only reads data the clients already wrote on this machine. No prompts or session content are uploaded. |
+| **Local-first** | It reads what the clients already wrote on this machine and uploads nothing about you. Unless you connect a Claude account, the one automatic request downloads the public price table from this repository. |
+| **Prices stay current** | New models and price changes arrive within a day of being fixed here, without a new version. Turn it off in the tray menu. |
 | **Zero API keys** | Local mode needs no API key. Claude OAuth is optional, for more accurate quotas. |
 
 ## What's new
+
+### v1.5.0
+
+- **The price table updates itself.** It now lives in [`lib/prices.json`](lib/prices.json) in this repository, and the app downloads it about 10 seconds after launch and then once a day, retrying hourly after a failure (at login the network is often not up yet). A price change or a new model reaches every installed copy within a day, with no new version to install. A download is used only if it validates and is at least as new as the table in use; offline, the last good download or the built-in copy keeps working. The request sends nothing about you, and the tray menu can turn it off (自动更新价格表). See [How the cost is computed](#how-the-cost-is-computed).
+- **The weekly price check reads the vendors' own pages.** `npm run check-prices` now compares every price on Anthropic's and OpenAI's pricing pages and flags any model the Codex model page offers that has no row. GPT-6 Sol and Luna showed as $0 until 1.4.0 because the old check only verified rows the table already had.
 
 ### v1.4.0
 
@@ -90,7 +96,7 @@ Older versions are listed under [Releases](https://github.com/saime428/ai-code-u
 1. Open [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest).
 2. Download the installer `AI-Code-Usage-Tray-Setup-*-win-x64.exe` and run it. It asks where to install, defaulting to the current user under `%LOCALAPPDATA%\Programs` (no admin rights; choosing all users needs them). It adds desktop and Start menu shortcuts and starts the app. Uninstall it from Windows Settings → Apps; settings and the account ledger in `%APPDATA%\ai-code-usage-tray` are kept.
 3. Click the floating bar or tray icon to open the full panel.
-4. Right-click the floating bar or tray icon to refresh, toggle launch-at-login, change the activity ring style, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
+4. Right-click the floating bar or tray icon to refresh, toggle launch-at-login, toggle price-table updates, change the activity ring style, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
 
 Prefer not to install? `AI-Code-Usage-Tray-*-win-x64.exe` (no `Setup` in the name) is the portable build: double-click to run. It unpacks itself to a new temporary folder on every launch, so it starts slower, and Windows may treat its tray icon as a new program each time.
 
@@ -115,7 +121,7 @@ The Microsoft Store build of Claude Desktop is detected automatically under `%LO
 
 ### How the cost is computed
 
-Claude and Codex costs come from a hand-maintained table of official standard API list prices (`lib/usage.js`, `lib/codex-usage.js`), stamped with the date it was last verified — the "price snapshot" date at the bottom of the panel. Neither vendor publishes pricing in a machine-readable form, so the table cannot update itself. What it models:
+Claude and Codex costs come from a hand-maintained table of official standard API list prices, [`lib/prices.json`](lib/prices.json), stamped with the date it was last verified — the "price snapshot" date at the bottom of the panel. Neither vendor publishes pricing in a machine-readable form, so the table is kept here and the app fetches it: about 10 seconds after launch and then once a day (hourly after a failed attempt), from `raw.githubusercontent.com`, falling back to `cdn.jsdelivr.net` where GitHub is unreachable. A downloaded table is used only if it passes validation (known schema, sane numbers, every model still present) and is at least as new as the table in use. Otherwise, or offline, the app keeps the last good download (`%APPDATA%\ai-code-usage-tray\prices.json`) or the copy built into the app. The tray menu item 自动更新价格表 turns the download off; the table already in use stays. What the table models:
 
 - Prompt caching: cache write 1.25x (5-minute) / 2x (1-hour), cache read 0.1x — 0.05x on Claude Opus 5.5, 0.025x on Claude Fable 5.1 and Mythos 5.1.
 - Fast mode (2x) on Opus 5.5 / 5 / 4.8, and `inference_geo: "us"` (1.1x), read from each transcript row.
@@ -125,23 +131,30 @@ Claude and Codex costs come from a hand-maintained table of official standard AP
 
 Models without a public list price (for example Codex's internal `codex-auto-review` label) show as "unavailable", are left out of the total, and the total is marked incomplete rather than guessed.
 
-`npm run check-prices` diffs the table against LiteLLM's community-maintained cost map and reports drift; CI runs it weekly. It only reports: confirm any change against the official pricing pages, edit the table, then bump `PRICE_SNAPSHOT`.
+`npm run check-prices` checks the table against Anthropic's and OpenAI's own pricing pages — every price, plus a row for every model the Codex model page offers — and against LiteLLM's community-maintained cost map; CI runs it weekly. It only reports: a person edits the table.
 
 #### Updating the price table
 
-Everything is in two files; nothing else needs to change.
+Everything is in one file, [`lib/prices.json`](lib/prices.json). Pushing it to `main` updates every installed copy (1.5.0 and later) within a day; no release is needed.
 
 | What | Where |
 | --- | --- |
-| Claude prices | `lib/usage.js` → the `PRICES` object. One row per model, USD per million tokens: `'claude-opus-5': { input: 5, output: 25 }`. Optional fields: `cacheRead` (cache-hit multiplier, default 0.1), `fast` (fast-mode multiplier), `legacy: true` (retired model, exempt from the Bedrock regional premium). |
-| Codex prices | `lib/codex-usage.js` → the `PRICES` object: `'gpt-5.6-sol': { input: 4, cachedInput: 0.4, output: 20 }`. The comment above it says which models get a row. |
-| Snapshot date | The `PRICE_SNAPSHOT` constant near the top of **both** files. The panel footer shows this date. |
+| Claude prices | The `claude` section. One row per model, USD per million tokens: `"claude-opus-5": { "input": 5, "output": 25 }`. Optional fields: `cacheRead` (cache-hit multiplier, default 0.1), `fast` (fast-mode multiplier), `legacy: true` (retired model, exempt from the Bedrock regional premium). |
+| Codex prices | The `codex` section: `"gpt-5.6-sol": { "input": 4, "cachedInput": 0.4, "output": 20 }`. Which models get a row is written at the top of `lib/codex-usage.js`. `codexAliases` points ids the pricing page documents as aliases at a row. |
+| Snapshot date | `snapshot`. The panel footer shows it. |
 
 Row keys are the model id **without** a date suffix (`claude-opus-5`, not `claude-opus-5-20260514`). `priceFor` matches by prefix and the longest key wins, so `claude-opus-4` and `claude-opus-4-5` coexist. A model that only exists as a longer sibling of an existing key (`gpt-5.5-pro` next to `gpt-5.5`) needs its own row, or it silently takes the shorter key's price — `npm run check-prices` reports that as an `unlisted id` line.
 
-1. `npm run check-prices` — each difference prints as `file  model  field  ours → upstream`.
-2. Confirm against the official pages: [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), [OpenAI pricing](https://developers.openai.com/api/docs/pricing). LiteLLM is community data and occasionally contradicts itself.
-3. Edit the row(s), set `PRICE_SNAPSHOT` in both files to today's date, run `npm test`, commit.
+1. `npm run check-prices` — each difference prints as `official  model  field  ours → official`, or with `claude` / `codex` in front for LiteLLM. Both vendors refuse some regions and Node's `fetch` ignores the system proxy; behind a proxy, run `NODE_USE_ENV_PROXY=1 npm run check-prices` (Node 24+, reads `HTTPS_PROXY`).
+2. `official` lines come straight from the vendors' pages. Confirm LiteLLM lines there too: [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), [OpenAI pricing](https://developers.openai.com/api/docs/pricing). LiteLLM is community data and occasionally contradicts itself.
+3. Edit the row(s), set `snapshot` to today's date, run `npm test`, commit, and push to `main`.
+
+Installed copies depend on this file, so four rules:
+
+- Keep the path. `lib/prices.json` on `main` is the exact file they download.
+- Set `snapshot` to the day of the change, a rollback included — a table older than the one in use is ignored. Never a future date: copies refuse one, because it would outrank every later fix.
+- Never delete a row. Retired models still price old transcripts, and a table missing a row is rejected as truncated.
+- New optional fields are fine (older copies ignore them). If an existing field changes meaning, raise `schema`: older copies then keep the table they have instead of misreading the new one.
 
 **How you find out.** The `prices` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs every Monday 06:17 UTC and fails on drift. GitHub sends the failure notification to the account whose commit last changed the `cron:` line of that file — by email and/or on the web, per [Settings → Notifications → Actions](https://github.com/settings/notifications) (make sure Actions notifications are on there; "failed workflows only" is enough). You can also run it any time from the Actions tab with **Run workflow**. GitHub pauses scheduled workflows after 60 days without repository activity; re-enable it from the Actions tab if that happens.
 
@@ -210,6 +223,7 @@ Input methods that load a text-service DLL into every program (Tencent WeType, f
 ## Privacy and security
 
 - No transcripts, prompts, project paths or session titles are uploaded.
+- Apart from the optional Claude account (which asks Anthropic for your quota), the only automatic network request downloads the public price table (`lib/prices.json`) from this repository, at launch and once a day (hourly after a failed attempt). It sends nothing about you; the server sees an ordinary download. Turn it off with the tray menu item 自动更新价格表.
 - No browser cookies are read, and no Anthropic / OpenAI / xAI API key is needed.
 - If a local file is corrupt, locked or unreadable, the last snapshot is kept and marked stale.
 - OAuth login is optional. Local monitoring keeps working offline or when Anthropic rate-limits.
@@ -236,7 +250,7 @@ npm ci
 npm test
 npm start
 npm run usage   # print today's usage in the terminal, no Electron needed
-npm run check-prices   # diff the price table against LiteLLM's cost map
+npm run check-prices   # check the price table against the vendors' pages and LiteLLM
 ```
 
 Build the Windows x64 installer and portable executable:
@@ -254,6 +268,8 @@ main.js                 Electron main process, tray, windows, refresh scheduling
 preload.js              restricted IPC bridge
 lib/usage.js            Claude local usage and session parsing
 lib/codex-usage.js      Codex local usage and quota parsing
+lib/prices.json         Claude / Codex price table (the app also downloads it from main)
+lib/prices.js           price table validation, and the URLs it is downloaded from
 lib/grok-usage.js       Grok local usage, official cost and weekly quota
 lib/claude-oauth.js     optional Claude OAuth / PKCE
 lib/hang-guard.js       hang log watchdog and not-responding instance lookup
@@ -272,12 +288,12 @@ npm run dist
 git status --short
 ```
 
-If `check-prices` reports drift, confirm it against the official pricing pages and update the table and `PRICE_SNAPSHOT` first. Bump the version in `package.json`, refresh the "What's new" section at the top of both READMEs, install the Setup build on a clean Windows machine, then create a GitHub Release with both `.exe` files and their SHA-256.
+Price fixes don't need a release — see [Updating the price table](#updating-the-price-table). For a release, bump the version in `package.json`, refresh the "What's new" section at the top of both READMEs, install the Setup build on a clean Windows machine, then create a GitHub Release with both `.exe` files and their SHA-256.
 
 ## Current limitations
 
 - Windows x64 only.
-- No auto-update yet.
+- The app itself does not auto-update yet; only the price table does.
 - The app UI is currently Chinese-only.
 - The builds are not code-signed yet. The SignPath Foundation application and signing automation are in progress.
 - Claude OAuth may be rate-limited by Anthropic or affected by your network egress. Local inference is unaffected.

@@ -1,0 +1,46 @@
+{
+  "about": "USD per 1M tokens, official standard API list prices. Installed apps (1.5.0+) download this exact file from GitHub main at launch and once a day, so a push here reaches them without a release. Keep the path, bump snapshot on every change, never drop a row, and use a new schema number if an existing field changes meaning. How to edit: README, Updating the price table.",
+  "schema": 1,
+  "snapshot": "2026-09-26",
+  "claude": {
+    "claude-fable-5-1": { "input": 10, "output": 50, "cacheRead": 0.025 },
+    "claude-mythos-5-1": { "input": 10, "output": 50, "cacheRead": 0.025 },
+    "claude-fable-5": { "input": 10, "output": 50 },
+    "claude-mythos-5": { "input": 10, "output": 50 },
+    "claude-opus-5-5": { "input": 4, "output": 20, "cacheRead": 0.05, "fast": 2 },
+    "claude-opus-5": { "input": 5, "output": 25, "fast": 2 },
+    "claude-opus-4-8": { "input": 5, "output": 25, "fast": 2 },
+    "claude-opus-4-7": { "input": 5, "output": 25 },
+    "claude-opus-4-6": { "input": 5, "output": 25 },
+    "claude-opus-4-5": { "input": 5, "output": 25 },
+    "claude-opus-4-1": { "input": 15, "output": 75, "legacy": true },
+    "claude-opus-4": { "input": 15, "output": 75, "legacy": true },
+    "claude-sonnet-5": { "input": 2, "output": 10 },
+    "claude-sonnet-4-6": { "input": 3, "output": 15 },
+    "claude-sonnet-4-5": { "input": 3, "output": 15 },
+    "claude-sonnet-4": { "input": 3, "output": 15, "legacy": true },
+    "claude-haiku-4-5": { "input": 1, "output": 5 },
+    "claude-3-5-haiku": { "input": 0.8, "output": 4, "legacy": true }
+  },
+  "codex": {
+    "gpt-6-astra": { "input": 10, "cachedInput": 1, "output": 50 },
+    "gpt-6-sol": { "input": 2, "cachedInput": 0.2, "output": 10 },
+    "gpt-6-luna": { "input": 0.1, "cachedInput": 0.01, "output": 0.5 },
+    "gpt-5.5-pro": { "input": 30, "cachedInput": 30, "output": 180, "note": "No cached-input rate on the pricing page (\"-\"), so cached tokens bill at the input rate." },
+    "gpt-5.5-cyber": { "input": 12.5, "cachedInput": 1.25, "output": 75 },
+    "gpt-5.6-cyber": { "input": 12.5, "cachedInput": 1.25, "output": 75 },
+    "gpt-5.6-sol": { "input": 4, "cachedInput": 0.4, "output": 20, "note": "Promotional, \"available at least through November 21, 2026\" - recheck after." },
+    "gpt-5.6-terra": { "input": 2, "cachedInput": 0.2, "output": 12 },
+    "gpt-5.6-luna": { "input": 0.2, "cachedInput": 0.02, "output": 1.2 },
+    "gpt-5.5": { "input": 5, "cachedInput": 0.5, "output": 30 },
+    "gpt-5.4-pro": { "input": 30, "cachedInput": 30, "output": 180, "note": "No cached-input rate on the pricing page (\"-\"), so cached tokens bill at the input rate." },
+    "gpt-5.4-mini": { "input": 0.75, "cachedInput": 0.075, "output": 4.5 },
+    "gpt-5.4-nano": { "input": 0.2, "cachedInput": 0.02, "output": 1.25 },
+    "gpt-5.4": { "input": 2.5, "cachedInput": 0.25, "output": 15 }
+  },
+  "codexAliases": {
+    "gpt-5.6": "gpt-5.6-sol",
+    "gpt-daybreak-blue-latest": "gpt-5.6-sol",
+    "gpt-daybreak-red-latest": "gpt-5.6-cyber"
+  }
+}

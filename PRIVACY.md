@@ -1,8 +1,8 @@
 # Privacy Policy
 
-Effective date: July 28, 2026
+Effective date: September 27, 2026
 
-AI Code Usage Tray is a local-first desktop application. It reads usage and session metadata already stored on the user's computer by Claude Code, Claude Desktop, Codex CLI, and Codex Desktop.
+AI Code Usage Tray is a local-first desktop application. It reads usage and session metadata already stored on the user's computer by Claude Code, Claude Desktop, Codex CLI, Codex Desktop, and Grok CLI.
 
 ## Data collection
 
@@ -10,18 +10,17 @@ The application has no analytics, telemetry, advertising, or developer-operated 
 
 ## Network transfers
 
-**This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.**
+The application sends no information about the user, their usage, or their sessions to any system. It makes network requests in these cases only:
 
-Network access occurs only when the user explicitly:
+- **Price table — automatic, can be turned off.** About 10 seconds after launch and then once a day (hourly after a failed attempt), the application downloads the public price table `lib/prices.json` from this project's GitHub repository (`raw.githubusercontent.com`, or `cdn.jsdelivr.net` when GitHub is unreachable). The request is an ordinary file download: it carries no usage data, identifiers, file paths, or settings, and the host sees only what any download reveals, such as the IP address. The tray menu item "自动更新价格表" (auto-update the price table) turns it off.
+- **Claude account — only when the user connects one.** Connecting opens Anthropic's OAuth flow and exchanges the authorization result with Anthropic; while connected, the application retrieves the account's usage limits from Anthropic. It does not send transcript content.
+- **External links** — when the user opens one from the application.
 
-- connects a Claude account, which opens Anthropic's OAuth flow and exchanges the authorization result with Anthropic to retrieve account usage limits; or
-- opens an external link from the application.
-
-The optional Claude account connection does not send transcript content. Anthropic's processing is governed by the [Anthropic Privacy Policy](https://www.anthropic.com/legal/privacy).
+Anthropic's processing is governed by the [Anthropic Privacy Policy](https://www.anthropic.com/legal/privacy). The price table download is subject to the [GitHub General Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) or, through the fallback, the [jsDelivr Privacy Policy](https://www.jsdelivr.com/terms/privacy-policy-jsdelivr-net).
 
 ## Local storage
 
-Optional Claude OAuth credentials are encrypted with Electron `safeStorage` and stored in the application's local user-data directory. Disconnecting the Claude account deletes those stored credentials. Other preferences and generated status files remain on the local computer.
+Optional Claude OAuth credentials are encrypted with Electron `safeStorage` and stored in the application's local user-data directory. Disconnecting the Claude account deletes those stored credentials. Other preferences, generated status files, and the last downloaded price table remain on the local computer.
 
 If the application stops responding, a diagnostic log in the same directory records the time, the step that was running, and the names and start times of processes running at that moment. It stays on the local computer and is transferred only if the user chooses to attach it to a bug report.
 

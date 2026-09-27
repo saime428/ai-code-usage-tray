@@ -32,6 +32,7 @@ const { startFullscreenWatch } = require('./lib/fullscreen-watch');
 const { startActivityWatch } = require('./lib/activity');
 const { appendHangLog, parseTasklistPids, startHangWatch } = require('./lib/hang-guard');
 const { runValuePath, portableShouldYield } = require('./lib/auto-launch');
+const { BUNDLED: BUNDLED_PRICES, PRICES_URLS, acceptPrices } = require('./lib/prices');
 const {
   createAuthorization,
   parseAuthorizationCode,
@@ -98,6 +99,7 @@ const DEFAULT_SETTINGS = {
   floatingPosition: 'top',
   floatingHideFullscreen: true,
   floatingRingStyle: 'brand',
+  autoUpdatePrices: true,
   claudeRangeDays: 1,
   codexRangeDays: 1,
   grokRangeDays: 1,
@@ -132,6 +134,9 @@ let accountLedger = null;
 let accountLedgerError = null;
 let accountLedgerDirty = false;
 let accountLedgerWriteTimer = null;
+let prices = BUNDLED_PRICES;
+let pricesUpdate = null;
+let pricesCheckedAt = 0; // 上次有地址回了一份合格的表(不管用没用上)
 
 // 挂起记录:接管卡死实例的那次启动和看门狗都往这里写。
 const HANG_LOG = path.join(app.getPath('userData'), 'hang-log.jsonl');
@@ -266,6 +271,7 @@ function loadSettings() {
     settings.floatingRingStyle = ['rainbow', 'off'].includes(saved.floatingRingStyle)
       ? saved.floatingRingStyle
       : 'brand';
+    settings.autoUpdatePrices = saved.autoUpdatePrices !== false;
     const legacyRangeDays = normalizeRangeDays(saved.rangeDays);
     settings.claudeRangeDays = normalizeRangeDays(saved.claudeRangeDays, legacyRangeDays);
     settings.codexRangeDays = normalizeRangeDays(saved.codexRangeDays, legacyRangeDays);
@@ -373,7 +379,7 @@ function collectLocalUsage(ranges, now) {
   const id = ++usageWorkerRequestId;
   return new Promise((resolve, reject) => {
     usageWorkerRequests.set(id, { resolve, reject });
-    ensureUsageWorker().postMessage({ id, ranges, now });
+    ensureUsageWorker().postMessage({ id, ranges, now, prices });
   });
 }
 
@@ -580,6 +586,78 @@ function cleanStaleTempFiles(file) {
   } catch {
     // 清不掉只是留几个残file,不值得打断启动。
   }
+}
+
+// 价格表跟着 GitHub main 上的 lib/prices.json 走:改价只要推这个文件,已安装的应用启动
+// 10 秒后和之后每天各拉一次就能用上,不用发版。拉到的表先过 acceptPrices,校验不过、
+// 或者比手上的旧(镜像可能落后几小时)都不用;拉不到就继续用上次下载的
+// (userData/prices.json)或内置的那份——价格只影响金额显示,不值得打扰用户。
+function pricesPath() {
+  return path.join(app.getPath('userData'), 'prices.json');
+}
+
+function loadCachedPrices() {
+  try {
+    prices = acceptPrices(fs.readFileSync(pricesPath(), 'utf8'), BUNDLED_PRICES) || BUNDLED_PRICES;
+  } catch {
+    prices = BUNDLED_PRICES; // 还没下载过,或者下载的那份比这个版本内置的旧、缺行
+  }
+}
+
+function writePricesCache(text) {
+  const file = pricesPath();
+  const temp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temp, text);
+    fs.renameSync(temp, file);
+  } catch {
+    // 只影响下次冷启动:内存里已经换成新表了。
+  } finally {
+    try {
+      fs.unlinkSync(temp);
+    } catch {
+      // rename 成功后临时文件已经不在了。
+    }
+  }
+}
+
+function updatePrices() {
+  if (!settings.autoUpdatePrices || pricesUpdate) return pricesUpdate;
+  pricesUpdate = (async () => {
+    for (const url of PRICES_URLS) {
+      try {
+        const response = await systemFetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20_000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const text = await response.text();
+        if (!settings.autoUpdatePrices) return; // 下载途中被关掉了
+        const next = acceptPrices(text, prices);
+        pricesCheckedAt = Date.now();
+        if (!next) return; // 比手上的旧:镜像落后于 main
+        const changed = JSON.stringify(next) !== JSON.stringify(prices);
+        prices = next;
+        writePricesCache(text);
+        if (changed) {
+          if (refreshPromise) await refreshPromise.catch(() => {});
+          refreshUsage();
+        }
+        return;
+      } catch (error) {
+        // 连不上、超时或校验不过:换下一个地址,都不行就继续用手上的表。表收到了但这个
+        // 版本不认(比如以后 schema 升级)就等一天再查;只有网络问题才每小时重试。
+        if (error.rejected) pricesCheckedAt = Date.now();
+      }
+    }
+  })().finally(() => {
+    pricesUpdate = null;
+  });
+  return pricesUpdate;
+}
+
+function setAutoUpdatePrices(enabled) {
+  settings.autoUpdatePrices = Boolean(enabled);
+  saveSettings();
+  updateTrayMenu();
+  updatePrices();
 }
 
 function cachedClaudeOAuthLimits() {
@@ -1148,6 +1226,12 @@ function quickMenuTemplate(includePaths) {
       },
     },
     {
+      label: '自动更新价格表',
+      type: 'checkbox',
+      checked: settings.autoUpdatePrices,
+      click: (item) => setAutoUpdatePrices(item.checked),
+    },
+    {
       label: '显示悬浮条',
       type: 'checkbox',
       checked: settings.floatingEnabled,
@@ -1236,8 +1320,9 @@ writeClaudeCredentials = guard('safe-storage', writeClaudeCredentials);
 
 app.whenReady().then(() => {
   loadSettings();
-  [accountLedgerPath(), claudeAuthPath()].forEach(cleanStaleTempFiles);
+  [accountLedgerPath(), claudeAuthPath(), pricesPath()].forEach(cleanStaleTempFiles);
   loadAccountLedger();
+  loadCachedPrices();
   createPanelWindow();
   createFloatingWindow();
   syncFullscreenWatch();
@@ -1263,6 +1348,11 @@ app.whenReady().then(() => {
   activity = activityWatch.current();
   refreshUsage();
   setInterval(refreshUsage, 30_000);
+  // 每小时看一眼、一天只成功拉一次:开机自启时 10 秒后网络常常还没连上,失败了不该等一整天。
+  setTimeout(updatePrices, 10_000);
+  setInterval(() => {
+    if (Date.now() - pricesCheckedAt > 24 * 3600 * 1000) updatePrices();
+  }, 3600 * 1000);
 });
 
 app.on('second-instance', () => {
