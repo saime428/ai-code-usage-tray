@@ -49,6 +49,7 @@
 - **环不等 30 秒刷新**。主进程直接监听三家的会话目录和 hook 状态目录，有写入 0.4 秒内亮起。一轮对话常常跑不满 30 秒，跟着快照走的话环基本只在任务结束后才亮。
 - **文件事件用 mtime 复核**。客户端重命名或迁移老会话文件同样会触发监听，但文件本身不新，不算在跑——Codex Desktop 启动时做会话迁移就曾让环平白转 20 秒。
 - **安装程序现在会问装在哪里**。以前一键安装不给选择，直接装到当前用户目录；现在是向导式安装，多一个路径页，默认仍是当前用户、不需要管理员权限。
+- **价格表按三家官方价格页重新核对**。Claude Opus 5.5 之前被当成 Opus 5 计价，缓存读取按官方价的 2.5 倍算——**常用 Opus 5.5 的话，显示的金额会明显下降，这是纠正，不是数据丢了。** GPT-6 Sol、GPT-6 Luna 之前不认识、金额算 0，现在按官方价计；Codex 仍列为可选的 GPT-5.4、GPT-5.4 mini 也补上了。Grok 不需要价格表：它的金额直接用 Grok CLI 记录的结算值。
 
 ### v1.3.2
 
@@ -115,8 +116,8 @@ Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Clau
 
 Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（`lib/usage.js`、`lib/codex-usage.js`），表上记着最后一次核对的日期，就是面板底部显示的「价格快照」。两家厂商都不提供机器可读的价格，所以这张表没法自己更新。它建模了：
 
-- 提示缓存：写入 1.25x（5 分钟）/ 2x（1 小时），读取 0.1x——Claude Fable 5.1 / Mythos 5.1 为 0.025x。
-- Opus 5 / 4.8 的快速模式（2x）和 `inference_geo: "us"`（1.1x），逐条从转录里读。
+- 提示缓存：写入 1.25x（5 分钟）/ 2x（1 小时），读取 0.1x——Claude Opus 5.5 为 0.05x，Claude Fable 5.1 / Mythos 5.1 为 0.025x。
+- Opus 5.5 / 5 / 4.8 的快速模式（2x）和 `inference_geo: "us"`（1.1x），逐条从转录里读。
 - Codex 长上下文（输入超过 272K：输入 2x、输出 1.5x）。
 - Bedrock / Vertex 形式的模型 id（`us.anthropic.…`、`名称@日期`），区域配置按官方口径加 10%，`global.` 不加。
 - 退役型号仍保留，旧转录照样能算。
@@ -132,7 +133,7 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表（
 | 改什么 | 在哪 |
 | --- | --- |
 | Claude 价格 | `lib/usage.js` 里的 `PRICES` 对象。一个型号一行，单位是每百万 token 的美元：`'claude-opus-5': { input: 5, output: 25 }`。可选字段：`cacheRead`（缓存命中倍率，默认 0.1）、`fast`（快速模式倍率）、`legacy: true`（退役型号，不吃 Bedrock 区域加价）。 |
-| Codex 价格 | `lib/codex-usage.js` 里的 `PRICES` 对象：`'gpt-5.6-sol': { input: 4, cachedInput: 0.4, output: 20 }`。 |
+| Codex 价格 | `lib/codex-usage.js` 里的 `PRICES` 对象：`'gpt-5.6-sol': { input: 4, cachedInput: 0.4, output: 20 }`。哪些型号该有一行，见它上方的注释。 |
 | 快照日期 | **两个文件**顶部附近的 `PRICE_SNAPSHOT` 常量。面板底部显示的就是它。 |
 
 行的 key 是**不带日期后缀**的模型 id（写 `claude-opus-5`，不写 `claude-opus-5-20260514`）。`priceFor` 按前缀匹配、最长的 key 胜出，所以 `claude-opus-4` 和 `claude-opus-4-5` 可以共存。如果新型号只是某个已有 key 的更长兄弟（比如 `gpt-5.5` 旁边出了 `gpt-5.5-pro`），必须单独加一行，否则它会静默按短 key 的价算——`npm run check-prices` 会以 `unlisted id` 一行报出来。
@@ -281,6 +282,7 @@ git status --short
 - Grok 会话仅有 CLI 一种来源：暂不支持分账号统计（缺身份识别），也没有点击跳转的深链。
 - Grok 周额度来自 Grok CLI 落盘的日志：新计费周期开始后，要等你下次运行 Grok CLI 才会刷新出来（本机实测滞后 2–57 小时）。这段时间额度不显示——周额度是账号级的，你可能在网页版用掉了一部分，猜一个数不如不显示。
 - Claude 超过 200K 的长上下文档位（仅 Sonnet 4.5 / 4 有）按平价计，Bedrock 对退役型号的另一套定价也没有建模。
+- Codex 的快速模式（`service_tier: "priority"`，官方价为标准价的 2x，gpt-5.5 为 2.5x）没有建模，这些回合按标准价显示。
 - 没有公开牌价的型号（如 `codex-auto-review`）会被排除在合计之外并标出，不做估算。
 
 ## 贡献

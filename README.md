@@ -49,6 +49,7 @@
 - **The ring does not wait for the 30s refresh.** The main process watches all three session directories and the hook status directory, and lights up within 0.4s of a write. A turn often finishes in well under 30 seconds, so a ring driven by the snapshot would mostly appear after the work was done.
 - **File events are re-checked against mtime.** A client renaming or migrating old session files fires the watch too, but the file itself is not new, so it does not count as running — Codex Desktop's session migration at startup used to spin the ring for 20 seconds on its own.
 - **The installer asks where to install.** The one-click build went to the per-user location without asking. It is now an assisted install with a directory page, still defaulting to per-user and still needing no admin rights.
+- **Prices re-checked against all three vendors' official pages.** Claude Opus 5.5 was being priced as Opus 5, cache reads at 2.5x the official rate, so **if you use Opus 5.5 the cost shown drops noticeably — that is the correction, not lost data.** GPT-6 Sol and GPT-6 Luna were not recognized and cost nothing; they now use official rates, as do GPT-5.4 and GPT-5.4 mini, which Codex still lists. Grok needs no table: its cost is the billed value Grok CLI records.
 
 ### v1.3.2
 
@@ -116,8 +117,8 @@ The Microsoft Store build of Claude Desktop is detected automatically under `%LO
 
 Claude and Codex costs come from a hand-maintained table of official standard API list prices (`lib/usage.js`, `lib/codex-usage.js`), stamped with the date it was last verified — the "price snapshot" date at the bottom of the panel. Neither vendor publishes pricing in a machine-readable form, so the table cannot update itself. What it models:
 
-- Prompt caching: cache write 1.25x (5-minute) / 2x (1-hour), cache read 0.1x — 0.025x on Claude Fable 5.1 and Mythos 5.1.
-- Fast mode (2x) on Opus 5 / 4.8, and `inference_geo: "us"` (1.1x), read from each transcript row.
+- Prompt caching: cache write 1.25x (5-minute) / 2x (1-hour), cache read 0.1x — 0.05x on Claude Opus 5.5, 0.025x on Claude Fable 5.1 and Mythos 5.1.
+- Fast mode (2x) on Opus 5.5 / 5 / 4.8, and `inference_geo: "us"` (1.1x), read from each transcript row.
 - Codex long context (input over 272K: 2x input, 1.5x output).
 - Bedrock and Vertex model ids (`us.anthropic.…`, `name@date`), with the documented 10% regional premium; `global.` profiles at base price.
 - Retired models stay listed so older transcripts still price.
@@ -133,7 +134,7 @@ Everything is in two files; nothing else needs to change.
 | What | Where |
 | --- | --- |
 | Claude prices | `lib/usage.js` → the `PRICES` object. One row per model, USD per million tokens: `'claude-opus-5': { input: 5, output: 25 }`. Optional fields: `cacheRead` (cache-hit multiplier, default 0.1), `fast` (fast-mode multiplier), `legacy: true` (retired model, exempt from the Bedrock regional premium). |
-| Codex prices | `lib/codex-usage.js` → the `PRICES` object: `'gpt-5.6-sol': { input: 4, cachedInput: 0.4, output: 20 }`. |
+| Codex prices | `lib/codex-usage.js` → the `PRICES` object: `'gpt-5.6-sol': { input: 4, cachedInput: 0.4, output: 20 }`. The comment above it says which models get a row. |
 | Snapshot date | The `PRICE_SNAPSHOT` constant near the top of **both** files. The panel footer shows this date. |
 
 Row keys are the model id **without** a date suffix (`claude-opus-5`, not `claude-opus-5-20260514`). `priceFor` matches by prefix and the longest key wins, so `claude-opus-4` and `claude-opus-4-5` coexist. A model that only exists as a longer sibling of an existing key (`gpt-5.5-pro` next to `gpt-5.5`) needs its own row, or it silently takes the shorter key's price — `npm run check-prices` reports that as an `unlisted id` line.
@@ -284,6 +285,7 @@ If `check-prices` reports drift, confirm it against the official pricing pages a
 - Grok sessions are CLI-only: no per-account tracking (no identity detection yet) and no click-to-open deep link.
 - The Grok weekly quota comes from what Grok CLI writes to disk: after a billing period rolls over it only reappears the next time you run Grok CLI (2–57 hours in local measurements). It stays hidden during that window — the weekly quota is account-wide, so you may have spent part of it on the web, and a guess would be worse than nothing.
 - Claude's >200K long-context tier (Sonnet 4.5 / 4 only) is priced flat, and Bedrock's own pricing for retired models is not modeled.
+- Codex fast mode (`service_tier: "priority"`, 2x the standard price, 2.5x on gpt-5.5) is not modeled; those turns show the standard price.
 - Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
 
 ## Contributing
