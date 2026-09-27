@@ -300,7 +300,7 @@ Price fixes don't need a release — see [Updating the price table](#updating-th
 - Regular Claude Desktop Home chats expose no token detail, so only session state and quota percentages can be shown — no cost.
 - Grok sessions are CLI-only: no per-account tracking (no identity detection yet) and no click-to-open deep link.
 - The Grok weekly quota comes from what Grok CLI writes to disk: after a billing period rolls over it only reappears the next time you run Grok CLI (2–57 hours in local measurements). It stays hidden during that window — the weekly quota is account-wide, so you may have spent part of it on the web, and a guess would be worse than nothing.
-- Claude's >200K long-context tier (Sonnet 4.5 / 4 only) is priced flat, and Bedrock's own pricing for retired models is not modeled.
+- Bedrock's own pricing for retired models is not modeled.
 - Codex fast mode (`service_tier: "priority"`, 2x the standard price, 2.5x on gpt-5.5) is not modeled; those turns show the standard price.
 - Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
 

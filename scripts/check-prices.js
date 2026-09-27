@@ -212,7 +212,6 @@ async function checkLiteLLM() {
   const drift = [];
   const missing = [];
   const resolved = [];
-  const notes = [];
   let verified = 0;
 
   // Our keys are undated prefixes (priceFor matches by prefix); retired models
@@ -227,7 +226,7 @@ async function checkLiteLLM() {
     return upstream[dated];
   };
 
-  const comparePriced = (section, model, kinds, costOf, flatContextTiers) => {
+  const comparePriced = (section, model, kinds, costOf) => {
     const entry = lookup(model);
     if (!entry) {
       missing.push(`${section}  ${model}`);
@@ -242,23 +241,10 @@ async function checkLiteLLM() {
         drift.push(`${section}  ${model}  ${label}  ${ours} → ${theirs}  (per ${N.toLocaleString()} tokens)`);
       }
     }
-    // Long-context tiers we deliberately price flat (1h cache writes ARE modeled
-    // and verified above) — flag so they are not rediscovered every few months.
-    if (!flatContextTiers) return;
-    const tier = Object.keys(entry).find((f) => /^input_cost_per_token_above_\d+k_tokens$/.test(f));
-    if (tier) {
-      const threshold = tier.match(/above_(\d+k)_tokens/)[1];
-      notes.push(`${section}  ${model}  upstream has a >${threshold} tier (input ${entry[tier] * 1e6}/MTok)`);
-    }
   };
 
-  for (const model of Object.keys(claude.PRICES)) {
-    // Claude long-context tiers are unmodeled; Codex's 272k tier is (2x/1.5x in costOf).
-    comparePriced('claude', model, CLAUDE_KINDS, claude.costOf, true);
-  }
-  for (const model of Object.keys(codex.PRICES)) {
-    comparePriced('codex', model, CODEX_KINDS, codex.costOf, false);
-  }
+  for (const model of Object.keys(claude.PRICES)) comparePriced('claude', model, CLAUDE_KINDS, claude.costOf);
+  for (const model of Object.keys(codex.PRICES)) comparePriced('codex', model, CODEX_KINDS, codex.costOf);
 
   // Pass 2: any upstream id we resolve but price differently is a missing row.
   for (const [id, entry] of Object.entries(upstream)) {
@@ -279,7 +265,7 @@ async function checkLiteLLM() {
       drift.push(`unlisted id  ${id}  resolves to ${ours} → upstream ${theirs}  (per ${N.toLocaleString()} tokens)`);
     }
   }
-  return { drift, missing, resolved, notes, verified };
+  return { drift, missing, resolved, verified };
 }
 
 const section = (title, lines) => {
@@ -298,7 +284,6 @@ async function main() {
   console.log(`LiteLLM (${SOURCE}): ${litellm.verified} model(s) checked\n`);
   section('LiteLLM matched via dated upstream id', litellm.resolved);
   section('not listed on LiteLLM (check by hand — the model may be real)', litellm.missing);
-  section('known, unmodeled upstream fields', [...new Set(litellm.notes)]);
   section('notes', official.notes);
 
   if (official.blind.length || !official.verified) {
