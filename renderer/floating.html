@@ -118,11 +118,13 @@
     body.ring-off .busy::before, body.ring-off .busy::after { display: none; }
     .details {
       position: absolute;
-      inset: 0;
+      top: 0;
+      left: 0;
+      width: 100%;
       display: grid;
       padding: 8px;
       gap: 8px;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(var(--n), 1fr);
       opacity: 0;
       visibility: hidden;
       transform: translateY(-4px) scale(.985);
@@ -172,15 +174,25 @@
     .token-total { color: #d4d2cf; font-size: 13px; font-weight: 700; }
     .token-total small { margin-right: 4px; color: var(--muted); font-size: 10px; font-weight: 600; }
     .token-breakdown { margin-top: 3px; color: var(--muted); font-size: 10px; }
-    body.position-top #surface { top: 2px; left: 50%; width: 648px; height: 220px; clip-path: inset(0 104px 182px 104px round 12px); transform: translateX(-50%); }
-    body.position-top #surface::after { top: 0; left: 104px; width: 440px; height: 38px; }
-    body.position-top .compact { top: 0; left: 104px; width: 440px; height: 38px; }
-    body.position-right #surface { top: 50%; right: 2px; width: 322px; height: 402px; clip-path: inset(41px 0 41px 268px round 12px); transform: translateY(-50%); }
-    body.position-right #surface::after { top: 41px; left: 268px; width: 54px; height: 320px; }
-    body.position-right .compact { top: 41px; left: 268px; width: 54px; height: 320px; flex-direction: column; gap: 14px; padding: 10px 5px; }
+    /* 尺寸由 layout() 量出来写进变量:--cw/--ch 是收起条,--sw/--sh 是展开后的整面。
+       两种状态下面一样大,窗口收起时只有收起条那么大,clip-path 只露出这一块;
+       展开时窗口先长到整面,clip-path 再放开。默认值是原来三家时的尺寸。 */
+    :root { --n: 3; --cw: 440px; --ch: 38px; --sw: 648px; --sh: 220px; }
+    #surface { width: var(--sw); height: var(--sh); }
+    body.position-top #surface { top: 2px; left: 50%; transform: translateX(-50%);
+      clip-path: inset(0 calc((var(--sw) - var(--cw)) / 2) calc(var(--sh) - var(--ch)) calc((var(--sw) - var(--cw)) / 2) round 12px); }
+    body.position-top #surface::after, body.position-top .compact { top: 0; left: calc((var(--sw) - var(--cw)) / 2); height: 38px; }
+    body.position-top #surface::after { width: var(--cw); }
+    body.position-top .compact { width: max-content; }
+    body.position-right #surface { top: 50%; right: 2px; transform: translateY(-50%);
+      clip-path: inset(calc((var(--sh) - var(--ch)) / 2) 0 calc((var(--sh) - var(--ch)) / 2) calc(var(--sw) - 54px) round 12px); }
+    body.position-right #surface::after, body.position-right .compact { top: calc((var(--sh) - var(--ch)) / 2); left: calc(var(--sw) - 54px); width: 54px; }
+    body.position-right #surface::after { height: var(--ch); }
+    body.position-right .compact { height: max-content; flex-direction: column; gap: 14px; padding: 10px 5px; }
     body.expanded.position-top #surface,
     body.expanded.position-right #surface { clip-path: inset(0 round 12px); transition: clip-path 400ms cubic-bezier(.23, 1, .32, 1), border-color 180ms ease, background-color 180ms ease; }
-    body.expanded.position-right #surface { height: 476px; }
+    /* 屏幕放不下时展开面封顶,卡片区滚动(比如右侧五家全开约 630px,1366×768 开 125% 缩放只有约 574px 可用) */
+    .details.scroll { height: 100%; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #4a4a55 transparent; }
     body.position-right .compact-provider { width: 100%; flex-direction: column; gap: 5px; }
     body.position-right .compact-provider + .compact-provider { padding: 14px 0 0; border-top: 1px solid #303038; border-left: 0; }
     body.position-right .metrics { flex-direction: column; gap: 2px; align-items: center; }
@@ -206,22 +218,33 @@
     <div class="details" id="details"></div>
   </main>
   <script>
+    // cacheSeparate: input 不含缓存的几家(口径见 lib/report.js 的 PROVIDERS),总量要把缓存加回来。
+    // noQuota: 根本没有额度窗口的几家,没额度不算异常。
     const providerInfo = {
-      claude: { name: 'Claude', logo: 'claude', logoClass: 'claude' },
-      codex: { name: 'Codex', logo: 'openai', logoClass: 'openai' },
-      grok: { name: 'Grok', logo: 'grok', logoClass: 'grok' },
+      claude: { name: 'Claude', logo: 'claude', logoClass: 'claude', costLabel: '等价值', cacheSeparate: true },
+      codex: { name: 'Codex', logo: 'openai', logoClass: 'openai', costLabel: '等价值' },
+      grok: { name: 'Grok', logo: 'grok', logoClass: 'grok', costLabel: '金额' },
+      // Antigravity 的标志只有位图:安装包 app.asar 里的 icon.png,去掉白色底板、裁到拱形、缩成 64px
+      antigravity: { name: 'Antigravity', image: 'antigravity.png', costLabel: '等价值', cacheSeparate: true, noQuota: true },
+      opencode: { name: 'OpenCode', logo: 'opencode', logoClass: 'opencode', costLabel: '记录金额', cacheSeparate: true, noQuota: true },
     };
+    // 流光环只有这三家:activity.js 只看它们的会话目录
+    const ringProviders = new Set(['claude', 'codex', 'grok']);
     let latest = null;
+    let providers = ['claude', 'codex', 'grok'];
     let activity = {};
     let ringStyle = null;
     let previewTimer = null;
     let expanded = false;
     let expandTimer = null;
     let collapseTimer = null;
+    let sentSize = '';
 
     const logo = (provider) => {
       const info = providerInfo[provider];
-      return `<svg class="brand ${info.logoClass}" aria-hidden="true"><use href="provider-logos.svg#${info.logo}"></use></svg>`;
+      return info.image
+        ? `<img class="brand" src="${info.image}" alt="" aria-hidden="true">`
+        : `<svg class="brand ${info.logoClass}" aria-hidden="true"><use href="provider-logos.svg#${info.logo}"></use></svg>`;
     };
     const windowsFor = (provider, usage) => {
       if (provider === 'codex' && ['api', 'apikey'].includes(usage.authMode)) return [];
@@ -245,7 +268,7 @@
     };
     const tokenUsage = (provider, usage) => {
       const totals = usage.totals || {};
-      const input = tokenValue(totals.input) + (provider === 'claude'
+      const input = tokenValue(totals.input) + (providerInfo[provider].cacheSeparate
         ? tokenValue(totals.cacheRead) + tokenValue(totals.cacheWrite)
         : 0);
       const output = tokenValue(totals.output);
@@ -255,6 +278,9 @@
     const statusText = (usage, provider) => {
       if (usage.dataStatus?.state !== 'ok') return usage.dataStatus.message || '本地数据读取失败';
       if (usage.rateLimits?.stale) return '额度数据已超过 15 分钟未更新';
+      if (providerInfo[provider].noQuota) {
+        return tokenUsage(provider, usage).total > 0 ? `没有额度窗口 · 显示${rangeLabel(usage)} Token` : `${rangeLabel(usage)}暂无用量`;
+      }
       if (!windowsFor(provider, usage).length) {
         return tokenUsage(provider, usage).total > 0
           ? `未提供额度 · 显示${rangeLabel(usage)} Token`
@@ -278,14 +304,15 @@
       : '';
     const costText = (provider, usage) => {
       if (provider === 'claude' && usage.costCoverage === 'unavailable') return '—';
-      const incomplete = provider === 'claude' && usage.costCoverage === 'partial';
+      // 和面板一致:有没定价的型号(比如 Antigravity 的 gemini-pro-default)就标 +
+      const incomplete = (provider === 'claude' && usage.costCoverage === 'partial') || (usage.unknownModels || []).length > 0;
       return `≈$${usage.costUSD.toFixed(2)}${incomplete ? '+' : ''}`;
     };
 
     function render() {
       if (!latest) return;
-      document.getElementById('compact').innerHTML = ['claude', 'codex', 'grok']
-        .filter((provider) => latest[provider])
+      const shown = providers.filter((provider) => latest[provider]);
+      document.getElementById('compact').innerHTML = shown
         .map((provider) => {
           const usage = latest[provider];
           const windows = windowsFor(provider, usage);
@@ -301,8 +328,7 @@
           </div>`;
         })
         .join('');
-      document.getElementById('details').innerHTML = ['claude', 'codex', 'grok']
-        .filter((provider) => latest[provider])
+      document.getElementById('details').innerHTML = shown
         .map((provider) => {
           const info = providerInfo[provider];
           const usage = latest[provider];
@@ -311,7 +337,7 @@
           const stale = isStale(usage);
           return `<section class="provider ${stale ? 'stale' : ''}" data-provider="${provider}">
             <div class="provider-head">${logo(provider)}<span class="provider-name">${info.name}</span>
-              <span class="cost"><small>${rangeLabel(usage)}${provider === 'grok' ? '金额' : '等价值'}</small> ${costText(provider, usage)}</span></div>
+              <span class="cost"><small>${rangeLabel(usage)}${info.costLabel}</small> ${costText(provider, usage)}</span></div>
             ${windows.length ? windows.map(([label, value]) => {
               const pct = Math.round(value.usedPercentage);
               const level = pct >= 95 ? 'danger' : pct >= 80 ? 'warn' : '';
@@ -319,14 +345,61 @@
               return `<div class="quota"><div class="quota-head"><strong>${label}</strong><span>${pct}% 已用</span></div>
                 <div class="bar"><i class="${level}" style="width:${Math.min(100, Math.max(0, pct))}%"></i></div>
                 ${reset ? `<div class="reset">${reset}</div>` : ''}</div>`;
-            }).join('') : tokens.total > 0
+            }).join('') : tokens.total > 0 || info.noQuota
               ? `<div class="token-fallback"><div class="token-total"><small>${rangeLabel(usage)} Token</small>${formatTokens(tokens.total)}</div><div class="token-breakdown">输入 ${formatTokens(tokens.input)} · 输出 ${formatTokens(tokens.output)}</div></div>`
               : '<div class="empty-quota">额度 —</div>'}
-            <div class="provider-status ${stale || (!windows.length && tokens.total === 0) ? 'bad' : ''}" title="${usage.rateLimits?.source === 'desktop' ? 'Claude Desktop 每约 5 分钟采样；≈ 为本地推算时间' : ''}">${statusText(usage, provider)}${usage.rateLimits?.source === 'desktop' ? ' · 重置时间为本地推算' : ''}</div>
+            <div class="provider-status ${stale || (!info.noQuota && !windows.length && tokens.total === 0) ? 'bad' : ''}" title="${usage.rateLimits?.source === 'desktop' ? 'Claude Desktop 每约 5 分钟采样；≈ 为本地推算时间' : ''}">${statusText(usage, provider)}${usage.rateLimits?.source === 'desktop' ? ' · 重置时间为本地推算' : ''}</div>
           </section>`;
         })
         .join('');
       applyActivity();
+      layout();
+    }
+
+    // 按显示的家数和实际内容量出尺寸:收起条按内容,展开面顶部每家一列、右侧固定宽。
+    // 屏幕放不下就封顶,卡片区改成滚动。量完把窗口尺寸报给主进程。
+    // 面的宽高取偶数:translateX/Y(-50%) 落在半像素上字会发虚。
+    const even = (value) => value + (value % 2);
+    const evenCap = (value) => value - (value % 2); // 封顶也取偶,往下取才不会超出屏幕
+    function layout() {
+      if (!latest) return;
+      const top = !document.body.classList.contains('position-right');
+      const compact = document.getElementById('compact');
+      const details = document.getElementById('details');
+      const style = document.documentElement.style;
+      const n = Math.max(1, compact.children.length);
+      style.setProperty('--n', n);
+      const cw = compact.offsetWidth;
+      const ch = compact.offsetHeight;
+      const sw = Math.min(even(top ? Math.max(cw, 16 + n * 206 + (n - 1) * 8) : 322), evenCap(screen.availWidth - 20));
+      // 尺寸变了(启动、勾选、数字变宽)时直接跳到新尺寸:clip-path 的过渡是给悬停展开用的,
+      // 让它追新尺寸的话条两端会被切掉一小会儿
+      let jump = style.getPropertyValue('--sw') !== `${sw}px`;
+      if (jump) surface.style.transition = 'none';
+      style.setProperty('--sw', `${sw}px`);
+      // 摘掉 scroll 才量得到卡片的自然高度,但滚动位置会被清零:先记下再写回
+      const scrollTop = details.scrollTop;
+      details.classList.remove('scroll');
+      const dh = details.offsetHeight + 2; // 卡片区在面的边框以内,上下各 1px
+      const sh = Math.min(even(Math.max(dh, ch)), evenCap(screen.availHeight - 20));
+      details.classList.toggle('scroll', dh > sh);
+      details.scrollTop = scrollTop;
+      for (const [name, value] of [['--cw', `${cw}px`], ['--ch', `${ch}px`], ['--sh', `${sh}px`]]) {
+        if (style.getPropertyValue(name) === value) continue;
+        if (!jump) surface.style.transition = 'none';
+        jump = true;
+        style.setProperty(name, value);
+      }
+      if (jump) {
+        void surface.offsetWidth;
+        surface.style.transition = '';
+      }
+      const size = { position: top ? 'top' : 'right', collapsed: [cw + 4, ch + 4], expanded: [sw + 4, sh + 4] };
+      const key = JSON.stringify(size);
+      if (key !== sentSize) {
+        sentSize = key;
+        window.api.setFloatingSize(size);
+      }
     }
 
     // 环的开关和快照分开走:快照 30 秒一次,活动状态由主进程 watch 到写入就推过来
@@ -342,7 +415,9 @@
     // 换样式时多半没人在跑,环是灭的,看着像菜单没生效:先点亮两秒给个预览
     function previewRings() {
       clearTimeout(previewTimer);
-      for (const element of document.querySelectorAll('[data-provider]')) element.classList.add('busy');
+      for (const element of document.querySelectorAll('[data-provider]')) {
+        if (ringProviders.has(element.dataset.provider)) element.classList.add('busy');
+      }
       document.body.classList.add('busy-any');
       previewTimer = setTimeout(applyActivity, 2000);
     }
@@ -354,6 +429,12 @@
       document.body.classList.toggle('position-right', state.position === 'right');
       document.body.classList.toggle('ring-rainbow', state.ringStyle === 'rainbow');
       document.body.classList.toggle('ring-off', state.ringStyle === 'off');
+      // 换了显示哪几家才重画;悬停展开、换位置、换屏只重新量,不重写内容(也不会掐掉环的预览)
+      const next = Array.isArray(state.providers) ? state.providers : providers;
+      const changed = next.join() !== providers.join();
+      providers = next;
+      if (changed) render();
+      else layout();
       const style = state.ringStyle || 'brand';
       if (ringStyle !== null && style !== ringStyle) previewRings();
       ringStyle = style;
@@ -369,6 +450,7 @@
       clearTimeout(expandTimer);
       if (expanded) collapseTimer = setTimeout(() => window.api.setFloatingExpanded(false, reduceMotion.matches), 300);
     });
+    // 点卡片区的滚动条不会触发 click(2026-10-04 实测:轨道点击翻页了,click 一次没来),不用另外拦
     surface.addEventListener('click', () => window.api.openPanel());
     window.api.onUsage((usage) => { latest = usage; render(); });
     window.api.getUsage().then((usage) => { latest = usage; render(); });

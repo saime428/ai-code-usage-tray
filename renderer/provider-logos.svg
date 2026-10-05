@@ -76,4 +76,9 @@
     <path d="M5.3 3 h4.1 l2.4 4.6 -2 3.9 Z"/>
     <path d="M14.3 16.5 l2-3.9 2.4 4.6 V21 h-1.9 Z"/>
   </symbol>
+  <!-- OpenCode: opencode-logo-dark-square.svg from github.com/anomalyco/opencode (MIT), the mark for dark backgrounds -->
+  <symbol id="opencode" viewBox="-30 0 300 300">
+    <path d="M180 240H60V120H180V240Z" fill="#4B4646"/>
+    <path d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z" fill="#F1ECEC"/>
+  </symbol>
 </svg>

@@ -38,7 +38,7 @@
 | **Per-account usage** | Once enabled on this machine, tokens accumulate under the current account; older records stay out. The ledger is encrypted locally by Windows. |
 | **Session states** | Working, needs attention, and idle. Desktop sessions open straight from the panel. |
 | **Live activity ring** | While a session is running, that provider lights up with a ring of travelling light on the floating bar. It watches session directories for writes instead of waiting for the 30s refresh. Switch it to rainbow or turn it off. |
-| **Edge-docked floating bar** | Docks to the top or right edge, expands on hover; auto-hides over fullscreen apps (exclusive or borderless-fullscreen games, videos, presentations), and the tray menu can turn that off. |
+| **Edge-docked floating bar** | Docks to the top or right edge, expands on hover, and shows the tools you pick (by default the ones found on this machine); auto-hides over fullscreen apps (exclusive or borderless-fullscreen games, videos, presentations), and the tray menu can turn that off. |
 | **Local-first** | It reads what the clients already wrote on this machine and uploads nothing about you. Unless you connect a Claude account, the one automatic request downloads the public price table from this repository. |
 | **Prices stay current** | New models and price changes arrive within a day of being fixed here, without a new version. Turn it off in the tray menu. |
 | **Zero API keys** | Local mode needs no API key. Claude OAuth is optional, for more accurate quotas. |
@@ -107,7 +107,7 @@ Older versions are listed under [Releases](https://github.com/saime428/ai-code-u
 1. Open [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest).
 2. Download the installer `AI-Code-Usage-Tray-Setup-*-win-x64.exe` and run it. It asks where to install, defaulting to the current user under `%LOCALAPPDATA%\Programs` (no admin rights; choosing all users needs them). It adds desktop and Start menu shortcuts and starts the app. Uninstall it from Windows Settings → Apps; settings and the account ledger in `%APPDATA%\ai-code-usage-tray` are kept.
 3. Click the floating bar or tray icon to open the full panel; its 报表 button opens the usage report.
-4. Right-click the floating bar or tray icon to open the usage report, refresh, toggle launch-at-login, toggle price-table updates, change the activity ring style, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
+4. Right-click the floating bar or tray icon to open the usage report, refresh, toggle launch-at-login, toggle price-table updates, pick which tools the floating bar shows, change the activity ring style, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
 
 Prefer not to install? `AI-Code-Usage-Tray-*-win-x64.exe` (no `Setup` in the name) is the portable build: double-click to run. It unpacks itself to a new temporary folder on every launch, so it starts slower, and Windows may treat its tray icon as a new program each time.
 
@@ -353,7 +353,7 @@ Price fixes don't need a release — see [Updating the price table](#updating-th
 - Bedrock's own pricing for retired models is not modeled.
 - Codex fast mode (`service_tier: "priority"`, 2x the standard price, 2.5x on gpt-5.5) is not modeled; those turns show the standard price.
 - Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
-- Antigravity and OpenCode have no quota display, no click-to-open link and no per-account tracking. The floating bar, its activity ring and the tray tooltip stay on Claude, Codex and Grok, the tools with quota windows.
+- Antigravity and OpenCode have no quota display, no click-to-open link and no per-account tracking. On the floating bar they show token counts instead of quota, without the activity ring; the tray tooltip stays on Claude, Codex and Grok.
 - An Antigravity turn is dated by its own timestamp or, on newer builds that stopped writing one, by the matching step; a turn with neither falls back to the conversation's start time. That never happened on the databases checked so far.
 - The first refresh after launch, and the first report over a longer range, still read every file in range once (about 3 seconds for 30 days of the author's history); only later reads are incremental. Nothing is cached on disk.
 

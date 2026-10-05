@@ -21,7 +21,8 @@ const { DEFAULT_CODEX_ROOT } = require('./lib/codex-usage');
 const { DEFAULT_GROK_ROOT } = require('./lib/grok-usage');
 const { DEFAULT_ANTIGRAVITY_HOME } = require('./lib/antigravity-usage');
 const { defaultDbPath: openCodeDbPath } = require('./lib/opencode-usage');
-const { PROVIDER_IDS } = require('./lib/report');
+const { PROVIDERS, PROVIDER_IDS } = require('./lib/report');
+const { savedPick, shownProviders, toggledPick } = require('./lib/floating-providers');
 const { dayKey, normalizeRangeDays, rangeBounds } = require('./lib/range');
 const { detectIdentities } = require('./lib/account-identity');
 const {
@@ -92,6 +93,7 @@ if (process.env.AI_CODE_USAGE_WORKER_SMOKE === '1') {
 const systemFetch = (...args) => net.fetch(...args);
 
 const PANEL = { width: 380, height: 544 };
+// Until the bar measures itself (floating-size): the original three tools.
 const FLOATING_SIZE = {
   top: { collapsed: [444, 42], expanded: [652, 224] },
   right: { collapsed: [58, 324], expanded: [326, 480] },
@@ -102,6 +104,8 @@ const DEFAULT_SETTINGS = {
   floatingPosition: 'top',
   floatingHideFullscreen: true,
   floatingRingStyle: 'brand',
+  // null = the tools detected on this machine; an array = the user's pick
+  floatingProviders: null,
   autoUpdatePrices: true,
   ...Object.fromEntries(PROVIDER_IDS.map((id) => [`${id}RangeDays`, 1])),
 };
@@ -121,6 +125,10 @@ let activityWatch = null;
 let activity = { claude: '', codex: '', grok: '' };
 let settings = { ...DEFAULT_SETTINGS };
 let usageSnapshot = null;
+// ponytail: only grows. A tool whose read fails for a refresh keeps its spot instead of
+// vanishing; one deleted while running stays until restart.
+const detectedProviders = new Set();
+const floatingSizes = {};
 let refreshPromise = null;
 let attentionSessions = new Set();
 let pendingClaudeAuthorization = null;
@@ -274,6 +282,7 @@ function loadSettings() {
     settings.floatingRingStyle = ['rainbow', 'off'].includes(saved.floatingRingStyle)
       ? saved.floatingRingStyle
       : 'brand';
+    settings.floatingProviders = savedPick(saved.floatingProviders);
     settings.autoUpdatePrices = saved.autoUpdatePrices !== false;
     const legacyRangeDays = normalizeRangeDays(saved.rangeDays);
     settings.claudeRangeDays = normalizeRangeDays(saved.claudeRangeDays, legacyRangeDays);
@@ -887,17 +896,29 @@ function createPanelWindow() {
   });
 }
 
+function floatingProviders() {
+  return shownProviders(settings.floatingProviders, detectedProviders);
+}
+
 function floatingState(expanded) {
   return {
     position: settings.floatingPosition,
     expanded,
     ringStyle: settings.floatingRingStyle,
+    providers: floatingProviders(),
   };
+}
+
+function sendFloatingState() {
+  if (floatingWin && !floatingWin.isDestroyed()) {
+    floatingWin.webContents.send('floating-state', floatingState(floatingExpanded));
+  }
 }
 
 function floatingBounds(expanded = floatingExpanded) {
   const { workArea } = screen.getPrimaryDisplay();
-  const [width, height] = FLOATING_SIZE[settings.floatingPosition][expanded ? 'expanded' : 'collapsed'];
+  const sizes = floatingSizes[settings.floatingPosition] || FLOATING_SIZE[settings.floatingPosition];
+  const [width, height] = sizes[expanded ? 'expanded' : 'collapsed'];
   return settings.floatingPosition === 'top'
     ? {
         x: Math.round(workArea.x + (workArea.width - width) / 2),
@@ -1083,6 +1104,11 @@ Grok (${rangeLabel(grok)}): ${fmtTokens(grok.totals.output)} out · ≈$${grok.c
 
 function publishUsage(snapshot) {
   usageSnapshot = snapshot;
+  const known = detectedProviders.size;
+  const shown = floatingProviders().join();
+  for (const id of PROVIDER_IDS) if (snapshot[id].detected) detectedProviders.add(id);
+  if (floatingProviders().join() !== shown) sendFloatingState();
+  if (detectedProviders.size !== known) updateTrayMenu();
   updateTray(snapshot);
   // The report window takes the event as its cue to ask for a fresh report.
   for (const window of [panelWin, floatingWin, reportWin]) {
@@ -1166,6 +1192,19 @@ function setFloatingRingStyle(style) {
   saveSettings();
   if (floatingWin) floatingWin.webContents.send('floating-state', floatingState(floatingExpanded));
   updateTrayMenu();
+}
+
+function setFloatingProviders(list) {
+  settings.floatingProviders = list;
+  saveSettings();
+  sendFloatingState();
+  updateTrayMenu();
+}
+
+function toggleFloatingProvider(id, shown) {
+  const next = toggledPick(floatingProviders(), id, shown);
+  if (next.length) setFloatingProviders(next);
+  else updateTrayMenu(); // the last one stays: put its tick back
 }
 
 function setFloatingPosition(position) {
@@ -1287,6 +1326,24 @@ function quickMenuTemplate(includePaths) {
       click: (item) => setFloatingHideFullscreen(item.checked),
     },
     {
+      label: '悬浮条显示',
+      submenu: [
+        {
+          label: '自动（本机检测到的工具）',
+          type: 'checkbox',
+          checked: !settings.floatingProviders,
+          click: () => setFloatingProviders(null),
+        },
+        { type: 'separator' },
+        ...PROVIDER_IDS.map((id) => ({
+          label: PROVIDERS[id].name + (detectedProviders.has(id) ? '' : '（未检测到）'),
+          type: 'checkbox',
+          checked: floatingProviders().includes(id),
+          click: (item) => toggleFloatingProvider(id, item.checked),
+        })),
+      ],
+    },
+    {
       label: '流光环样式',
       submenu: [
         { label: '品牌色', style: 'brand' },
@@ -1378,6 +1435,7 @@ app.whenReady().then(() => {
     if (floatingWin) {
       floatingWin.setBounds(floatingBounds(), false);
       keepWindowOnTop(floatingWin);
+      sendFloatingState(); // the bar re-measures against the new work area
     }
     if (panelWin && panelWin.isVisible()) positionPanel(panelAnchor);
   });
@@ -1427,6 +1485,21 @@ ipcMain.handle('floating-state', () => floatingState(floatingExpanded));
 ipcMain.on('floating-expanded', (event, state) => {
   if (floatingWin && event.sender === floatingWin.webContents) {
     setFloatingExpanded(Boolean(state && state.expanded), Boolean(state && state.reduceMotion));
+  }
+});
+// The bar sizes itself to the tools it shows and reports its window sizes here.
+ipcMain.on('floating-size', (event, size) => {
+  if (!floatingWin || event.sender !== floatingWin.webContents || !size || !['top', 'right'].includes(size.position)) return;
+  const pair = (value) =>
+    Array.isArray(value) && value.length === 2 && value.every((n) => Number.isFinite(n) && n >= 20 && n <= 8000);
+  if (!pair(size.collapsed) || !pair(size.expanded)) return;
+  floatingSizes[size.position] = {
+    collapsed: size.collapsed.map(Math.round),
+    expanded: size.expanded.map(Math.round),
+  };
+  // Mid-collapse the timer applies the new size when the animation ends.
+  if (size.position === settings.floatingPosition && !floatingCollapseTimer) {
+    floatingWin.setBounds(floatingBounds(), false);
   }
 });
 ipcMain.on('open-panel', (event) => {

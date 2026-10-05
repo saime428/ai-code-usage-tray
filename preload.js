@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   setFloatingExpanded: (expanded, reduceMotion = false) =>
     ipcRenderer.send('floating-expanded', { expanded, reduceMotion }),
+  setFloatingSize: (size) => ipcRenderer.send('floating-size', size),
   openPanel: () => ipcRenderer.send('open-panel'),
   closePanel: () => ipcRenderer.send('close-panel'),
   openReport: () => ipcRenderer.send('open-report'),
