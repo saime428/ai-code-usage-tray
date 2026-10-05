@@ -34,7 +34,7 @@ const {
 } = require('./lib/account-ledger');
 const { sessionTarget } = require('./lib/open-session');
 const { startFullscreenWatch } = require('./lib/fullscreen-watch');
-const { startActivityWatch } = require('./lib/activity');
+const { startActivityWatch, IDLE: IDLE_ACTIVITY } = require('./lib/activity');
 const { appendHangLog, parseTasklistPids, startHangWatch } = require('./lib/hang-guard');
 const { runValuePath, portableShouldYield } = require('./lib/auto-launch');
 const { BUNDLED: BUNDLED_PRICES, PRICES_URLS, acceptPrices } = require('./lib/prices');
@@ -123,7 +123,7 @@ let floatingCollapseTimer = null;
 let fullscreenActive = false;
 let fullscreenWatch = null;
 let activityWatch = null;
-let activity = { claude: '', codex: '', grok: '' };
+let activity = { ...IDLE_ACTIVITY };
 let settings = { ...DEFAULT_SETTINGS };
 let usageSnapshot = null;
 // ponytail: only grows. A tool whose read fails for a refresh keeps its spot instead of

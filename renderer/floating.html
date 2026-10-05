@@ -82,6 +82,8 @@
     [data-provider='claude'] { --ring: var(--claude); }
     [data-provider='codex'] { --ring: #9fe8c3; }
     [data-provider='grok'] { --ring: #8fb7ff; }
+    [data-provider='antigravity'] { --ring: #d55181; }
+    [data-provider='opencode'] { --ring: #9085e9; }
     .busy.attention { --ring: var(--warn); }
     .busy::before {
       content: '';
@@ -228,8 +230,6 @@
       antigravity: { name: 'Antigravity', image: 'antigravity.png', costLabel: '等价值', cacheSeparate: true, quotaHint: 'Antigravity 运行时才读得到额度' },
       opencode: { name: 'OpenCode', logo: 'opencode', logoClass: 'opencode', costLabel: '记录金额', cacheSeparate: true, noQuota: true },
     };
-    // 流光环只有这三家:activity.js 只看它们的会话目录
-    const ringProviders = new Set(['claude', 'codex', 'grok']);
     let latest = null;
     let providers = ['claude', 'codex', 'grok'];
     let activity = {};
@@ -426,9 +426,7 @@
     // 换样式时多半没人在跑,环是灭的,看着像菜单没生效:先点亮两秒给个预览
     function previewRings() {
       clearTimeout(previewTimer);
-      for (const element of document.querySelectorAll('[data-provider]')) {
-        if (ringProviders.has(element.dataset.provider)) element.classList.add('busy');
-      }
+      for (const element of document.querySelectorAll('[data-provider]')) element.classList.add('busy');
       document.body.classList.add('busy-any');
       previewTimer = setTimeout(applyActivity, 2000);
     }

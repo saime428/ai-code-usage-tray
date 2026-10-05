@@ -45,6 +45,10 @@
 
 ## What's new
 
+### v1.7.1
+
+- **Activity ring for Antigravity and OpenCode.** Both now light up on the floating bar while they work: pink for Antigravity, violet for OpenCode. Antigravity's ring follows its step transcript, so it stays on through long thinking and long tool runs until the final answer, goes out about 20 seconds after it or after you press stop, and picks up a turn already running when the app starts. OpenCode's follows writes to its database; that rule has not been tried on a real OpenCode session yet. See [The activity ring](#the-activity-ring).
+
 ### v1.7.0
 
 - **Antigravity quota.** While Antigravity is running, the panel and the floating bar show the 5-hour and weekly windows its Settings → Models page shows, for Gemini and for Claude/GPT, with reset times. Antigravity keeps them only in its running language server, never on disk, so the app asks that server on 127.0.0.1. Its cached figures do not follow usage, so the app has it refresh them whenever this machine's Antigravity usage grows, when a window resets, and every 10 minutes: after a message the bar updates within one 30-second refresh. With Antigravity closed, the last figures stay, marked with their age. See [Where the data comes from](#where-the-data-comes-from).
@@ -229,15 +233,17 @@ With the optional Claude CLI hooks installed, working / attention / idle become 
 
 ### The activity ring
 
-While a session runs, its segment of the floating bar is wrapped in a ring of travelling light: orange for Claude, mint for Codex, blue for Grok, and the warning colour when a session needs you. "Activity ring style" in the tray menu switches it to rainbow or turns it off; with "reduce motion" enabled system-wide it becomes a still glow.
+While a session runs, its segment of the floating bar is wrapped in a ring of travelling light: orange for Claude, mint for Codex, blue for Grok, pink for Antigravity, violet for OpenCode, and the warning colour when a session needs you. "Activity ring style" in the tray menu switches it to rainbow or turns it off; with "reduce motion" enabled system-wide it becomes a still glow.
 
-The ring does not wait for the 30s snapshot. The main process watches `~/.claude/projects`, `~/.codex/sessions`, `~/.grok/sessions` and the hook status directory, and lights up within 0.4s of a write (`lib/activity.js`):
+The ring does not wait for the 30s snapshot. The main process watches `~/.claude/projects`, `~/.codex/sessions`, `~/.grok/sessions`, Antigravity's step transcripts, OpenCode's database and the hook status directory, and lights up within 0.4s of a write (`lib/activity.js`):
 
 - Claude sessions with hooks installed follow the hook's working / needs-attention state, which is exact.
-- Sessions without hooks, plus Codex and Grok, fall back to "wrote to disk in the last 20 seconds" — so the ring can blink during a long think with no disk writes, and stays lit for up to 20s after a turn ends. Tune `WRITE_ACTIVE_MS` in `lib/activity.js`.
+- Antigravity's step transcript says whether a turn is still open: only a reply without tool calls ends the turn (pressing stop writes one too), and a checkpoint is judged by the step before it; after any other step — your message, a tool call or its result, a command, a system message — the model or a tool is still due. Checked against every step in the author's 29 transcripts: the rule never called a finished turn open. So its ring stays on through long thinking and long tool runs until the final answer, then goes out 20 seconds later; a turn already running when the app starts is picked up at launch. If Antigravity dies mid-turn and writes nothing more, the ring goes out 10 minutes after its last write (`OPEN_TURN_MS`).
+- Sessions without hooks, plus Codex, Grok and OpenCode, fall back to "wrote to disk in the last 20 seconds" — so the ring can blink during a long think with no disk writes, and stays lit for up to 20s after a turn ends. Tune `WRITE_ACTIVE_MS` in `lib/activity.js`.
 - Every file event is re-checked against the file's mtime: a client renaming or migrating old session files also fires the watch, but the file itself is not new, so it does not count as running.
+- Antigravity and OpenCode keep their sessions in SQLite, and Antigravity creates and deletes its database's write-ahead files even while idle (opening and closing connections), which would blink the ring. So for Antigravity the ring follows the per-step transcript it appends only while a turn runs (`brain/<conversation>/.system_generated/logs/transcript.jsonl` under the IDE and CLI folders), and for OpenCode a change to `opencode.db-wal` — the app's own read-only opens never write that file. The OpenCode rule has not been measured on a real OpenCode session yet.
 
-Switching styles while nothing is running would show no difference, so a style change lights all three rings for two seconds as a preview.
+Switching styles while nothing is running would show no difference, so a style change lights every ring for two seconds as a preview.
 
 ### Enabling hooks (optional)
 
@@ -365,7 +371,7 @@ Price fixes don't need a release — see [Updating the price table](#updating-th
 - Bedrock's own pricing for retired models is not modeled.
 - Codex fast mode (`service_tier: "priority"`, 2x the standard price, 2.5x on gpt-5.5) is not modeled; those turns show the standard price.
 - Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
-- Antigravity's quota shows only once Antigravity has run since the app started (it is not stored on disk), and the `agy` CLI on its own does not provide it. OpenCode has no quota display. Neither has a click-to-open link, per-account tracking or the activity ring, and the tray tooltip stays on Claude, Codex and Grok.
+- Antigravity's quota shows only once Antigravity has run since the app started (it is not stored on disk), and the `agy` CLI on its own does not provide it. OpenCode has no quota display. Neither has a click-to-open link or per-account tracking, and the tray tooltip stays on Claude, Codex and Grok.
 - An Antigravity turn is dated by its own timestamp or, on newer builds that stopped writing one, by the matching step; a turn with neither falls back to the conversation's start time. That never happened on the databases checked so far.
 - The first refresh after launch, and the first report over a longer range, still read every file in range once (about 3 seconds for 30 days of the author's history); only later reads are incremental. Nothing is cached on disk.
 
