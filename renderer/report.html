@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'" />
+  <title>用量报表</title>
+  <style>
+    /* Dark only, like the panel and the floating bar. Provider colors are the dark
+       steps of the dataviz reference palette, in stack order, validated as a set on
+       #16161a and #1e1e23 (adjacent CVD ΔE >= 9.4, all >= 3:1). Color follows the
+       tool: filtering never repaints the others. */
+    :root {
+      color-scheme: dark;
+      --bg: #16161a;
+      --surface: #1e1e23;
+      --raised: #24242a;
+      --text: #e8e6e3;
+      --subtle: #b4b2ad;
+      --muted: #8a8a92;
+      --border: #2c2c33;
+      --grid: #2a2a30;
+      --axis: #3a3a42;
+      --accent: #d97757;
+      --up: #e4a05b;
+      --down: #4caf6e;
+      --warn: #d9a441;
+      --claude: #d95926;
+      --codex: #199e70;
+      --grok: #3987e5;
+      --antigravity: #d55181;
+      --opencode: #9085e9;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 13px/1.45 'Segoe UI', system-ui, sans-serif;
+    }
+    main { max-width: 1240px; margin: 0 auto; padding: 18px 22px 28px; }
+    header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    h1 { margin: 0; font-size: 18px; font-weight: 650; }
+    .range-text { color: var(--muted); font-size: 12px; }
+    .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 14px 0 16px; }
+    .group { display: flex; align-items: center; gap: 4px; }
+    .group-label { margin-right: 4px; color: var(--muted); font-size: 12px; }
+    .seg, .chip {
+      min-height: 28px;
+      padding: 0 11px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--subtle);
+      font: 600 12px/1 'Segoe UI', system-ui, sans-serif;
+      cursor: pointer;
+      transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+    }
+    .seg:hover, .chip:hover { border-color: #4a4a54; color: var(--text); }
+    .seg[aria-pressed='true'] { border-color: #5a5a66; background: var(--raised); color: var(--text); }
+    .chip { display: inline-flex; align-items: center; gap: 6px; }
+    .chip i { width: 9px; height: 9px; border-radius: 2px; background: var(--key); }
+    .chip[aria-pressed='false'] { color: var(--muted); }
+    .chip[aria-pressed='false'] i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--key); }
+    :focus-visible { outline: 2px solid #80aaff; outline-offset: 2px; }
+    .status { margin-left: auto; color: var(--muted); font-size: 12px; }
+    .status.error { color: var(--warn); }
+    #content { transition: opacity 160ms ease; }
+    #content.loading { opacity: .55; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .tile { padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    .tile-label { color: var(--muted); font-size: 12px; }
+    .tile-value { margin-top: 2px; font-size: 24px; font-weight: 650; }
+    .tile-value.hero { color: var(--accent); font-size: 30px; }
+    .tile-delta { margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .tile-delta .up { color: var(--up); }
+    .tile-delta .down { color: var(--down); }
+    .card { margin-bottom: 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    h2 { margin: 0; font-size: 14px; font-weight: 650; }
+    .hint { color: var(--muted); font-size: 12px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--subtle); font-size: 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 10px; height: 10px; border-radius: 2px; background: var(--key); }
+    .chart { position: relative; }
+    .chart svg { display: block; width: 100%; overflow: visible; }
+    .chart text { fill: var(--muted); font: 11px 'Segoe UI', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+    .tooltip {
+      position: absolute;
+      z-index: 5;
+      min-width: 170px;
+      padding: 8px 10px;
+      border: 1px solid #3a3a44;
+      border-radius: 6px;
+      background: #101014;
+      box-shadow: 0 6px 18px #0009;
+      pointer-events: none;
+      font-size: 12px;
+    }
+    .tooltip[hidden] { display: none; }
+    .tooltip-title { margin-bottom: 4px; color: var(--subtle); }
+    .tooltip-row { display: grid; grid-template-columns: 14px auto 1fr; align-items: center; gap: 6px; }
+    .tooltip-row b { font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
+    .tooltip-row span { color: var(--muted); }
+    .key { width: 12px; height: 2px; border-radius: 1px; background: var(--key); }
+    .tooltip-total { margin-top: 4px; padding-top: 4px; border-top: 1px solid #2c2c33; color: var(--subtle); }
+    .grid-2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; }
+    .grid-2 > .card { margin-bottom: 14px; }
+    @media (max-width: 980px) { .grid-2 { grid-template-columns: 1fr; } }
+    /* One day: the trend chart is already by hour, so the hour-of-day card would repeat it. */
+    .grid-2.single { grid-template-columns: 1fr; }
+    .card[hidden] { display: none; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+    th { color: var(--muted); font-size: 12px; font-weight: 500; }
+    th:first-child, td:first-child { text-align: left; }
+    td.name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+    td.left { text-align: left; }
+    tbody tr:hover { background: #222228; }
+    .tool { display: inline-flex; align-items: center; gap: 6px; }
+    .tool i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--key); }
+    .share { display: inline-block; width: 64px; height: 6px; margin-left: 8px; overflow: hidden; border-radius: 3px; background: #2c2c33; vertical-align: middle; }
+    .share i { display: block; height: 100%; border-radius: 3px; background: var(--key); }
+    .tag { color: var(--muted); font-size: 11px; }
+    .sub { display: block; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; }
+    .unpriced { color: var(--warn); }
+    details { margin-top: 8px; }
+    summary { color: var(--muted); font-size: 12px; cursor: pointer; }
+    .table-scroll { max-height: 280px; overflow: auto; margin-top: 6px; }
+    .empty { padding: 28px 0; color: var(--muted); text-align: center; }
+    .more { margin-top: 8px; }
+    .notes { color: var(--muted); font-size: 12px; }
+    .notes p { margin: 4px 0; }
+    .notes .warning { color: var(--warn); }
+    @media (prefers-reduced-motion: reduce) { .seg, .chip, #content { transition: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>用量报表</h1>
+      <span class="range-text" id="range-text"></span>
+    </header>
+    <div class="filters">
+      <div class="group" role="group" aria-label="统计范围">
+        <span class="group-label">范围</span>
+        <button type="button" class="seg" data-days="1">今日</button>
+        <button type="button" class="seg" data-days="7">7 天</button>
+        <button type="button" class="seg" data-days="30">30 天</button>
+        <button type="button" class="seg" data-days="90">90 天</button>
+      </div>
+      <div class="group" role="group" aria-label="图表指标">
+        <span class="group-label">图表</span>
+        <button type="button" class="seg" data-metric="costUSD">金额</button>
+        <button type="button" class="seg" data-metric="total">Token</button>
+      </div>
+      <div class="group" role="group" aria-label="工具" id="tool-filter"></div>
+      <span class="status" id="status" role="status" aria-live="polite"></span>
+    </div>
+
+    <div id="content">
+      <section class="tiles" id="tiles" aria-label="关键指标"></section>
+
+      <section class="card" aria-labelledby="trend-title">
+        <div class="card-head">
+          <h2 id="trend-title">趋势</h2>
+          <div class="legend" id="trend-legend"></div>
+        </div>
+        <div class="chart" id="trend-chart"></div>
+        <details>
+          <summary>表格视图</summary>
+          <div class="table-scroll" id="trend-table"></div>
+        </details>
+      </section>
+
+      <div class="grid-2" id="tools-row">
+        <section class="card" aria-labelledby="tools-title">
+          <div class="card-head"><h2 id="tools-title">按工具</h2><span class="hint">缓存命中 = 缓存读 ÷ 全部输入</span></div>
+          <div id="tools-table"></div>
+        </section>
+        <section class="card" aria-labelledby="hourly-title" id="hourly-card">
+          <div class="card-head"><h2 id="hourly-title">按时段</h2><span class="hint">一天里几点用得最多</span></div>
+          <div class="chart" id="hourly-chart"></div>
+        </section>
+      </div>
+
+      <section class="card" aria-labelledby="projects-title">
+        <div class="card-head"><h2 id="projects-title">按项目</h2><span class="hint">按工作目录合并，跨工具汇总</span></div>
+        <div id="projects-table"></div>
+      </section>
+
+      <section class="card" aria-labelledby="sessions-title">
+        <div class="card-head"><h2 id="sessions-title">最贵的会话</h2><span class="hint">子代理、resume 复制的历史都已归回原会话</span></div>
+        <div id="sessions-table"></div>
+      </section>
+
+      <section class="card" aria-labelledby="models-title">
+        <div class="card-head"><h2 id="models-title">按模型</h2><span class="hint">输入含缓存读写，按各家口径换算到同一尺度</span></div>
+        <div id="models-table"></div>
+      </section>
+
+      <section class="notes" id="notes"></section>
+    </div>
+  </main>
+
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+  <script>
+    const PROVIDERS = [
+      { id: 'claude', name: 'Claude', basis: 'API 等价值' },
+      { id: 'codex', name: 'Codex', basis: 'API 等价值' },
+      { id: 'grok', name: 'Grok', basis: '官方结算' },
+      { id: 'antigravity', name: 'Antigravity', basis: 'API 等价值' },
+      { id: 'opencode', name: 'OpenCode', basis: 'OpenCode 记录' },
+    ];
+    const NAME = Object.fromEntries(PROVIDERS.map((p) => [p.id, p.name]));
+    const color = (id) => `var(--${id})`;
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    const tokens = (value) => {
+      const n = Number.isFinite(value) ? Math.max(0, value) : 0;
+      return n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n));
+    };
+    const money = (value) => {
+      const n = Number.isFinite(value) ? value : 0;
+      if (n === 0) return '$0';
+      if (n < 0.01) return '<$0.01';
+      return n >= 1000 ? '$' + Math.round(n).toLocaleString('en-US') : '$' + n.toFixed(2);
+    };
+    const count = (value) => Math.round(value || 0).toLocaleString('en-US');
+    const percent = (part, whole) => (whole > 0 ? (part / whole * 100).toFixed(1) + '%' : '—');
+    const when = (ms) => new Date(ms).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const metricText = (metric, value) => (metric === 'costUSD' ? money(value) : tokens(value));
+    // Axis ticks are round numbers: no trailing ".00".
+    const tickText = (metric, value) => (metric === 'costUSD'
+      ? '$' + (value >= 1000 ? (value / 1000).toFixed(value % 1000 ? 1 : 0) + 'K' : String(+value.toFixed(2)))
+      : tokens(value).replace(/\.0(?=[KMB])/, ''));
+
+    const state = { days: 30, metric: 'costUSD', hidden: new Set(), report: null, busy: false, queued: false };
+    try {
+      const saved = JSON.parse(localStorage.getItem('report-view') || '{}');
+      if ([1, 7, 30, 90].includes(saved.days)) state.days = saved.days;
+      if (['costUSD', 'total'].includes(saved.metric)) state.metric = saved.metric;
+    } catch {
+      // Storage off (private profile): defaults are fine.
+    }
+    const remember = () => {
+      try {
+        localStorage.setItem('report-view', JSON.stringify({ days: state.days, metric: state.metric }));
+      } catch {}
+    };
+
+    function shown() {
+      const report = state.report;
+      return PROVIDERS.filter((p) => report && report.providers[p.id] && !state.hidden.has(p.id) && isPresent(p.id));
+    }
+    // A tool shows up when it is installed here or has anything in range.
+    function isPresent(id) {
+      const report = state.report;
+      const summary = report.providers[id];
+      return Boolean((report.status && report.status[id] && report.status[id].detected) || (summary && (summary.total > 0 || summary.previousTotal > 0)));
+    }
+
+    function sum(list, key) {
+      return list.reduce((total, item) => total + (item[key] || 0), 0);
+    }
+
+    // --- tiles -------------------------------------------------------------
+    const previousLabel = () => (state.report.days === 1 ? '比昨天' : `比上一个 ${state.report.days} 天`);
+
+    function delta(current, previous) {
+      if (!state.report.previous.covered) return '<span>90 天范围不做环比</span>';
+      if (previous <= 0) return current > 0 ? '<span>上期无用量</span>' : '<span>上期也无用量</span>';
+      const change = (current - previous) / previous * 100;
+      const cls = change > 0.05 ? 'up' : change < -0.05 ? 'down' : '';
+      const sign = change > 0 ? '+' : '';
+      return `<span class="${cls}">${sign}${change.toFixed(1)}%</span> ${previousLabel()}`;
+    }
+
+    function renderTiles(list) {
+      const summaries = list.map((p) => state.report.providers[p.id]);
+      const cost = sum(summaries, 'costUSD');
+      const total = sum(summaries, 'total');
+      const prompt = sum(summaries, 'prompt');
+      const cacheRead = sum(summaries, 'cacheRead');
+      const incomplete = summaries.some((s) => s.unknownModels.length);
+      document.getElementById('tiles').innerHTML = [
+        `<div class="tile"><div class="tile-label">金额${incomplete ? '（不完整）' : ''}</div><div class="tile-value hero">${money(cost)}${incomplete ? '+' : ''}</div><div class="tile-delta">${delta(cost, sum(summaries, 'previousCostUSD'))}</div></div>`,
+        `<div class="tile"><div class="tile-label">Token</div><div class="tile-value">${tokens(total)}</div><div class="tile-delta">${delta(total, sum(summaries, 'previousTotal'))}</div></div>`,
+        `<div class="tile"><div class="tile-label">请求</div><div class="tile-value">${count(sum(summaries, 'requests'))}</div><div class="tile-delta">平均每次 ${money(cost / Math.max(1, sum(summaries, 'requests')))}</div></div>`,
+        `<div class="tile"><div class="tile-label">会话</div><div class="tile-value">${count(sum(summaries, 'sessions'))}</div><div class="tile-delta">${list.length} 个工具</div></div>`,
+        `<div class="tile"><div class="tile-label">缓存命中</div><div class="tile-value">${percent(cacheRead, prompt)}</div><div class="tile-delta">缓存读 ${tokens(cacheRead)} / 输入 ${tokens(prompt)}</div></div>`,
+      ].join('');
+    }
+
+    // --- stacked columns -----------------------------------------------------
+    function niceMax(value) {
+      if (value <= 0) return 1;
+      const exponent = Math.pow(10, Math.floor(Math.log10(value)));
+      const step = [1, 2, 2.5, 5, 10].find((s) => s * exponent * 4 >= value) * exponent;
+      return step * 4;
+    }
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    function el(name, attrs, parent) {
+      const node = document.createElementNS(svgNS, name);
+      for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+      if (parent) parent.appendChild(node);
+      return node;
+    }
+
+    // categories: [{ label, title, providers: { id: metricObject } }]
+    function columnChart(container, categories, list, { height = 240, labelEvery } = {}) {
+      container.textContent = '';
+      const metric = state.metric;
+      const width = Math.max(320, container.clientWidth);
+      const pad = { top: 8, right: 4, bottom: 22, left: 52 };
+      const plotW = width - pad.left - pad.right;
+      const plotH = height - pad.top - pad.bottom;
+      const totals = categories.map((c) => list.reduce((s, p) => s + ((c.providers[p.id] || {})[metric] || 0), 0));
+      const max = niceMax(Math.max(0, ...totals));
+      const band = plotW / Math.max(1, categories.length);
+      const barW = Math.max(2, Math.min(24, band * 0.68));
+      const y = (value) => pad.top + plotH - (value / max) * plotH;
+      const svg = el('svg', { viewBox: `0 0 ${width} ${height}`, height, role: 'img' }, container);
+      svg.setAttribute('aria-label', `${categories.length} 列堆叠柱状图，最高 ${metricText(metric, Math.max(0, ...totals))}`);
+      for (let i = 0; i <= 4; i++) {
+        const value = (max / 4) * i;
+        el('line', { x1: pad.left, x2: width - pad.right, y1: y(value), y2: y(value), stroke: i ? 'var(--grid)' : 'var(--axis)', 'stroke-width': 1, 'shape-rendering': 'crispEdges' }, svg);
+        el('text', { x: pad.left - 8, y: y(value) + 4, 'text-anchor': 'end' }, svg).textContent = tickText(metric, value);
+      }
+      const every = labelEvery || Math.max(1, Math.ceil(categories.length * 46 / plotW));
+      const hover = el('rect', { y: pad.top, height: plotH, width: band, fill: '#ffffff', opacity: 0, rx: 3 }, svg);
+      categories.forEach((category, index) => {
+        const cx = pad.left + band * index + band / 2;
+        let base = 0;
+        const segments = list.filter((p) => ((category.providers[p.id] || {})[metric] || 0) > 0);
+        segments.forEach((p, k) => {
+          const value = category.providers[p.id][metric];
+          const top = y(base + value);
+          const bottom = y(base);
+          // 2px surface gap between stacked segments; only the top segment is rounded.
+          const gap = k ? 2 : 0;
+          const h = Math.max(0, bottom - top - gap);
+          if (h > 0) {
+            const x = cx - barW / 2;
+            if (k === segments.length - 1) {
+              const r = Math.min(4, h, barW / 2);
+              el('path', {
+                d: `M${x},${top + h}V${top + r}Q${x},${top} ${x + r},${top}H${x + barW - r}Q${x + barW},${top} ${x + barW},${top + r}V${top + h}Z`,
+                fill: color(p.id),
+              }, svg);
+            } else {
+              el('rect', { x, y: top, width: barW, height: h, fill: color(p.id) }, svg);
+            }
+          }
+          base += value;
+        });
+        if (index % every === 0) {
+          el('text', { x: cx, y: height - 6, 'text-anchor': 'middle' }, svg).textContent = category.label;
+        }
+      });
+      const tooltip = document.getElementById('tooltip');
+      const show = (event) => {
+        const box = svg.getBoundingClientRect();
+        const x = (event.clientX - box.left) * (width / box.width) - pad.left;
+        const index = Math.floor(x / band);
+        if (index < 0 || index >= categories.length) return hide();
+        const category = categories[index];
+        hover.setAttribute('x', pad.left + band * index);
+        hover.setAttribute('opacity', 0.05);
+        const rows = list
+          .map((p) => ({ p, value: (category.providers[p.id] || {})[metric] || 0 }))
+          .filter((row) => row.value > 0);
+        tooltip.innerHTML = `<div class="tooltip-title">${esc(category.title)}</div>` +
+          (rows.length
+            ? rows.map(({ p, value }) => `<div class="tooltip-row"><i class="key" style="--key:${color(p.id)}"></i><span>${esc(p.name)}</span><b>${metricText(metric, value)}</b></div>`).join('') +
+              (rows.length > 1 ? `<div class="tooltip-total">合计 ${metricText(metric, totals[index])}</div>` : '')
+            : '<div class="tooltip-total">没有用量</div>');
+        tooltip.hidden = false;
+        const left = Math.min(window.innerWidth - tooltip.offsetWidth - 8, event.clientX + 14);
+        tooltip.style.left = `${left + window.scrollX}px`;
+        tooltip.style.top = `${event.clientY + window.scrollY + 14}px`;
+      };
+      const hide = () => {
+        tooltip.hidden = true;
+        hover.setAttribute('opacity', 0);
+      };
+      svg.addEventListener('pointermove', show);
+      svg.addEventListener('pointerleave', hide);
+    }
+
+    function legend(list) {
+      return list.map((p) => `<span><i style="--key:${color(p.id)}"></i>${esc(p.name)}</span>`).join('');
+    }
+
+    function renderTrend(list) {
+      const report = state.report;
+      const byHour = report.days === 1;
+      const categories = byHour
+        ? report.hourly.map((h) => ({ label: String(h.hour), title: `${report.range.endDay} ${h.hour}:00–${h.hour + 1}:00`, providers: h.providers }))
+        : report.daily.map((d) => ({ label: d.day.slice(5).replace('-', '/'), title: d.day, providers: d.providers }));
+      document.getElementById('trend-title').textContent = byHour ? '今日按小时' : `最近 ${report.days} 天按日`;
+      document.getElementById('trend-legend').innerHTML = list.length > 1 ? legend(list) : '';
+      columnChart(document.getElementById('trend-chart'), categories, list, { height: 260, labelEvery: byHour ? 2 : undefined });
+      const rows = categories.map((c) => `<tr><td>${esc(c.title)}</td>${list.map((p) => `<td>${metricText(state.metric, (c.providers[p.id] || {})[state.metric] || 0)}</td>`).join('')}</tr>`).join('');
+      document.getElementById('trend-table').innerHTML =
+        `<table><thead><tr><th scope="col">${byHour ? '时段' : '日期'}</th>${list.map((p) => `<th scope="col">${esc(p.name)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function renderHourly(list) {
+      const report = state.report;
+      const categories = report.hourly.map((h) => ({ label: String(h.hour), title: `${h.hour}:00–${h.hour + 1}:00（${report.days} 天合计）`, providers: h.providers }));
+      columnChart(document.getElementById('hourly-chart'), categories, list, { height: 200, labelEvery: 3 });
+    }
+
+    // --- tables ----------------------------------------------------------------
+    function toolCell(id) {
+      return `<span class="tool" style="--key:${color(id)}"><i></i>${esc(NAME[id])}</span>`;
+    }
+
+    function renderTools(list) {
+      const report = state.report;
+      const totalCost = sum(list.map((p) => report.providers[p.id]), 'costUSD');
+      const rows = list
+        .map((p) => ({ p, s: report.providers[p.id] }))
+        .sort((a, b) => b.s.costUSD - a.s.costUSD || b.s.total - a.s.total)
+        .map(({ p, s }) => `<tr>
+          <td>${toolCell(p.id)} <span class="tag">${esc(p.basis)}</span></td>
+          <td>${money(s.costUSD)}${s.unknownModels.length ? '<span class="unpriced" title="有模型没有价格">+</span>' : ''}<span class="share" style="--key:${color(p.id)}"><i style="width:${totalCost > 0 ? (s.costUSD / totalCost * 100).toFixed(1) : 0}%"></i></span></td>
+          <td>${tokens(s.total)}</td><td>${percent(s.cacheRead, s.prompt)}</td><td>${count(s.requests)}</td><td>${count(s.sessions)}</td>
+        </tr>`).join('');
+      document.getElementById('tools-table').innerHTML = rows
+        ? `<table><thead><tr><th scope="col">工具</th><th scope="col">金额</th><th scope="col">Token</th><th scope="col">缓存命中</th><th scope="col">请求</th><th scope="col">会话</th></tr></thead><tbody>${rows}</tbody></table>`
+        : '<div class="empty">没有选中的工具</div>';
+    }
+
+    function limited(id, rows, limit, render) {
+      const container = document.getElementById(id);
+      const expanded = container.dataset.expanded === 'true';
+      const visible = expanded ? rows : rows.slice(0, limit);
+      container.innerHTML = render(visible) + (rows.length > limit
+        ? `<button type="button" class="seg more" data-toggle="${id}">${expanded ? '收起' : `显示全部 ${rows.length} 条`}</button>`
+        : '');
+    }
+
+    function renderProjects(list) {
+      const ids = new Set(list.map((p) => p.id));
+      const rows = state.report.projects
+        .map((project) => {
+          const parts = Object.entries(project.providers).filter(([id]) => ids.has(id));
+          const total = { costUSD: 0, total: 0, sessions: 0, requests: 0, cacheRead: 0, prompt: 0 };
+          for (const [, value] of parts) for (const key of Object.keys(total)) total[key] += value[key] || 0;
+          return { project, parts, total };
+        })
+        .filter((row) => row.parts.length && (row.total.total > 0 || row.total.costUSD > 0))
+        .sort((a, b) => b.total.costUSD - a.total.costUSD || b.total.total - a.total.total);
+      if (!rows.length) {
+        document.getElementById('projects-table').innerHTML = '<div class="empty">所选范围内没有项目用量</div>';
+        return;
+      }
+      limited('projects-table', rows, 12, (visible) => `<table><thead><tr><th scope="col">项目</th><th scope="col">工具</th><th scope="col">金额</th><th scope="col">Token</th><th scope="col">缓存命中</th><th scope="col">会话</th></tr></thead><tbody>${visible.map(({ project, parts, total }) => `<tr>
+        <td class="name" title="${esc(project.cwd || project.name)}">${esc(project.name)}<span class="sub">${esc(project.cwd || '')}</span></td>
+        <td class="left">${parts.sort((a, b) => b[1].costUSD - a[1].costUSD).map(([id]) => toolCell(id)).join(' ')}</td>
+        <td>${money(total.costUSD)}</td><td>${tokens(total.total)}</td><td>${percent(total.cacheRead, total.prompt)}</td><td>${count(total.sessions)}</td>
+      </tr>`).join('')}</tbody></table>`);
+    }
+
+    function renderSessions(list) {
+      const ids = new Set(list.map((p) => p.id));
+      const rows = state.report.sessions.filter((s) => ids.has(s.provider));
+      if (!rows.length) {
+        document.getElementById('sessions-table').innerHTML = '<div class="empty">所选范围内没有会话</div>';
+        return;
+      }
+      limited('sessions-table', rows, 15, (visible) => `<table><thead><tr><th scope="col">会话</th><th scope="col">工具</th><th scope="col">金额</th><th scope="col">Token</th><th scope="col">请求</th><th scope="col">最后活动</th></tr></thead><tbody>${visible.map((s) => {
+        const label = s.title || s.project || s.sessionId.slice(0, 8);
+        return `<tr>
+          <td class="name" title="${esc([s.title, s.cwd, s.sessionId].filter(Boolean).join('\n'))}">${esc(label)}<span class="sub">${esc(s.project || '')}${s.client ? ' · ' + esc(s.client) : ''}</span></td>
+          <td class="left">${toolCell(s.provider)}</td><td>${money(s.costUSD)}</td><td>${tokens(s.total)}</td><td>${count(s.requests)}</td><td>${when(s.lastAt)}</td>
+        </tr>`;
+      }).join('')}</tbody></table>`);
+    }
+
+    function renderModels(list) {
+      const ids = new Set(list.map((p) => p.id));
+      const rows = state.report.models.filter((m) => ids.has(m.provider));
+      if (!rows.length) {
+        document.getElementById('models-table').innerHTML = '<div class="empty">所选范围内没有模型用量</div>';
+        return;
+      }
+      limited('models-table', rows, 12, (visible) => `<table><thead><tr><th scope="col">模型</th><th scope="col">工具</th><th scope="col">请求</th><th scope="col">输入</th><th scope="col">缓存读</th><th scope="col">输出</th><th scope="col">金额</th></tr></thead><tbody>${visible.map((m) => `<tr>
+        <td class="name" title="${esc(m.model)}">${esc(m.model)}</td><td class="left">${toolCell(m.provider)}</td>
+        <td>${count(m.requests)}</td><td>${tokens(m.prompt)}</td><td>${tokens(m.cacheRead)}</td><td>${tokens(m.output)}</td>
+        <td>${m.priced ? money(m.costUSD) : '<span class="unpriced" title="价格表里没有这个模型，金额未计入">价格不可用</span>'}</td>
+      </tr>`).join('')}</tbody></table>`);
+    }
+
+    function renderNotes(list) {
+      const report = state.report;
+      const unpriced = list.flatMap((p) => report.providers[p.id].unknownModels.map((m) => `${p.name} ${m}`));
+      const snapshot = Object.values(report.status || {}).map((s) => s.priceSnapshot).find(Boolean);
+      document.getElementById('notes').innerHTML = [
+        '<p>金额口径：Claude、Codex、Antigravity 是标准 API 等价值（订阅用户不会按此金额计费）；Grok 是 CLI 记录的官方结算金额；OpenCode 是它自己按 models.dev 价格记下的金额。合计把这几种口径直接相加，只用来看钱花在哪。</p>',
+        `<p>小时和日期按本机时区；${report.previous.covered ? `环比对象是${report.days === 1 ? '昨天全天' : `紧挨着的上一个 ${report.days} 天`}。` : '90 天范围不做环比（需要读半年记录）。'}${snapshot ? ` 价格快照 ${esc(snapshot)}。` : ''} 生成于 ${when(report.generatedAt)}，打开期间每 30 秒刷新。</p>`,
+        unpriced.length ? `<p class="warning">没有价格、金额未计入：${esc(unpriced.join('、'))}</p>` : '',
+      ].join('');
+    }
+
+    function renderFilters() {
+      document.querySelectorAll('[data-days]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.days) === state.days)));
+      document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
+      const report = state.report;
+      const present = report ? PROVIDERS.filter((p) => isPresent(p.id)) : [];
+      document.getElementById('tool-filter').innerHTML = present.length > 1
+        ? '<span class="group-label">工具</span>' + present.map((p) => `<button type="button" class="chip" data-provider="${p.id}" aria-pressed="${!state.hidden.has(p.id)}" style="--key:${color(p.id)}"><i></i>${esc(p.name)}</button>`).join('')
+        : '';
+    }
+
+    function render() {
+      renderFilters();
+      const report = state.report;
+      if (!report) return;
+      document.getElementById('range-text').textContent = report.range.date;
+      const list = shown();
+      renderTiles(list);
+      renderTrend(list);
+      renderTools(list);
+      const oneDay = report.days === 1;
+      document.getElementById('hourly-card').hidden = oneDay;
+      document.getElementById('tools-row').classList.toggle('single', oneDay);
+      if (!oneDay) renderHourly(list);
+      renderProjects(list);
+      renderSessions(list);
+      renderModels(list);
+      renderNotes(list);
+    }
+
+    async function load() {
+      if (state.busy) {
+        state.queued = true;
+        return;
+      }
+      state.busy = true;
+      const days = state.days;
+      const status = document.getElementById('status');
+      document.getElementById('content').classList.add('loading');
+      status.classList.remove('error');
+      if (!state.report || state.report.days !== days) {
+        status.textContent = days > 7 ? `正在读取最近 ${days} 天的记录（首次打开需要几秒）…` : '正在统计…';
+      }
+      try {
+        const report = await window.api.getReport(days);
+        if (days === state.days) {
+          state.report = report;
+          status.textContent = '';
+          render();
+        }
+      } catch (error) {
+        status.textContent = String(error.message || '报表生成失败').replace(/^.*Error: /, '');
+        status.classList.add('error');
+      } finally {
+        state.busy = false;
+        document.getElementById('content').classList.remove('loading');
+        if (state.queued || days !== state.days) {
+          state.queued = false;
+          load();
+        }
+      }
+    }
+
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('button');
+      if (!button) return;
+      if (button.dataset.days) {
+        state.days = Number(button.dataset.days);
+        remember();
+        renderFilters();
+        load();
+      } else if (button.dataset.metric) {
+        state.metric = button.dataset.metric;
+        remember();
+        render();
+      } else if (button.dataset.provider) {
+        const id = button.dataset.provider;
+        if (state.hidden.has(id)) state.hidden.delete(id);
+        else state.hidden.add(id);
+        render();
+      } else if (button.dataset.toggle) {
+        const container = document.getElementById(button.dataset.toggle);
+        container.dataset.expanded = String(container.dataset.expanded !== 'true');
+        render();
+      }
+    });
+
+    // Redraw on width changes only: a redraw empties the chart for a moment, which
+    // changes its height, and reacting to that would redraw forever.
+    let resizeTimer;
+    let drawnWidth = 0;
+    new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width);
+      if (width === drawnWidth) return;
+      drawnWidth = width;
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => state.report && render(), 120);
+    }).observe(document.querySelector('main'));
+
+    // The main process pushes a snapshot every 30 seconds; that is the cue to refresh.
+    window.api.onUsage(() => load());
+    renderFilters();
+    load();
+  </script>
+</body>
+</html>

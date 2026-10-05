@@ -19,6 +19,9 @@ const { Worker } = require('worker_threads');
 const { DEFAULT_ROOT } = require('./lib/usage');
 const { DEFAULT_CODEX_ROOT } = require('./lib/codex-usage');
 const { DEFAULT_GROK_ROOT } = require('./lib/grok-usage');
+const { DEFAULT_ANTIGRAVITY_HOME } = require('./lib/antigravity-usage');
+const { defaultDbPath: openCodeDbPath } = require('./lib/opencode-usage');
+const { PROVIDER_IDS } = require('./lib/report');
 const { dayKey, normalizeRangeDays, rangeBounds } = require('./lib/range');
 const { detectIdentities } = require('./lib/account-identity');
 const {
@@ -82,7 +85,7 @@ if (process.env.AI_CODE_USAGE_WORKER_SMOKE === '1') {
     process.stderr.write(`WORKER_ERROR ${String(error.stack || error)}\n`);
     app.exit(1);
   });
-  worker.postMessage({ id: 1, ranges: { claude: 1, codex: 1, grok: 1 }, now: Date.now() });
+  worker.postMessage({ id: 1, kind: 'report', days: 7, now: Date.now() });
   return;
 }
 
@@ -100,14 +103,14 @@ const DEFAULT_SETTINGS = {
   floatingHideFullscreen: true,
   floatingRingStyle: 'brand',
   autoUpdatePrices: true,
-  claudeRangeDays: 1,
-  codexRangeDays: 1,
-  grokRangeDays: 1,
+  ...Object.fromEntries(PROVIDER_IDS.map((id) => [`${id}RangeDays`, 1])),
 };
+const REPORT_SIZE = { width: 1120, height: 780, minWidth: 760, minHeight: 540 };
 const LOGIN_ITEM_PATH = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
 let tray = null;
 let panelWin = null;
 let floatingWin = null;
+let reportWin = null;
 let quitting = false;
 let panelAnchor = 'tray';
 let floatingExpanded = false;
@@ -275,7 +278,10 @@ function loadSettings() {
     const legacyRangeDays = normalizeRangeDays(saved.rangeDays);
     settings.claudeRangeDays = normalizeRangeDays(saved.claudeRangeDays, legacyRangeDays);
     settings.codexRangeDays = normalizeRangeDays(saved.codexRangeDays, legacyRangeDays);
-    settings.grokRangeDays = normalizeRangeDays(saved.grokRangeDays, 1);
+    // Added after the shared legacy `rangeDays` was split per provider: default to today.
+    for (const id of ['grok', 'antigravity', 'opencode']) {
+      settings[`${id}RangeDays`] = normalizeRangeDays(saved[`${id}RangeDays`], 1);
+    }
   } catch {
     settings = { ...DEFAULT_SETTINGS };
   }
@@ -380,6 +386,15 @@ function collectLocalUsage(ranges, now) {
   return new Promise((resolve, reject) => {
     usageWorkerRequests.set(id, { resolve, reject });
     ensureUsageWorker().postMessage({ id, ranges, now, prices });
+  });
+}
+
+// Same worker and caches as the snapshot: what the panel already read is resumed.
+function collectReport(days) {
+  const id = ++usageWorkerRequestId;
+  return new Promise((resolve, reject) => {
+    usageWorkerRequests.set(id, { resolve, reject });
+    ensureUsageWorker().postMessage({ id, kind: 'report', days, now: Date.now(), prices });
   });
 }
 
@@ -759,11 +774,7 @@ function collectedProvider(name, value, error, collectedAt, rangeDays) {
 
 async function collectAllUsage() {
   const collectedAt = Date.now();
-  const ranges = {
-    claude: settings.claudeRangeDays,
-    codex: settings.codexRangeDays,
-    grok: settings.grokRangeDays,
-  };
+  const ranges = Object.fromEntries(PROVIDER_IDS.map((id) => [id, settings[`${id}RangeDays`]]));
   const identitiesBefore = detectIdentities();
   const appRunning = isClaudeDesktopRunning();
   const oauthPromise = getClaudeOAuthRateLimits();
@@ -777,13 +788,10 @@ async function collectAllUsage() {
   }
   const identitiesAfter = detectIdentities();
   const [oauthRateLimits, desktopConversation] = await Promise.all([oauthPromise, desktopPromise]);
-  const snapshot = {
-    collectedAt,
-    ranges,
-    claude: collectedProvider('claude', local && local.claude, localError, collectedAt, ranges.claude),
-    codex: collectedProvider('codex', local && local.codex, localError, collectedAt, ranges.codex),
-    grok: collectedProvider('grok', local && local.grok, localError, collectedAt, ranges.grok),
-  };
+  const snapshot = { collectedAt, ranges };
+  for (const id of PROVIDER_IDS) {
+    snapshot[id] = collectedProvider(id, local && local[id], localError, collectedAt, ranges[id]);
+  }
   snapshot.codex.authMode = identitiesAfter.codex?.authMode || identitiesBefore.codex?.authMode || '';
   if (local && accountLedger) {
     const today = dayKey(new Date(collectedAt));
@@ -802,12 +810,14 @@ async function collectAllUsage() {
     }
     if (changed) scheduleAccountLedgerWrite();
   }
-  // ponytail: Grok 暂不接分账号账本(缺身份识别),accounts 为空时面板自动隐藏该区
-  for (const provider of ['claude', 'codex', 'grok']) {
+  // ponytail: 分账号账本只接 Claude/Codex(其他家缺身份识别),其余给空账本,面板自动隐藏该区
+  for (const provider of PROVIDER_IDS) {
     delete snapshot[provider].daily;
-    snapshot[provider].accounts = accountLedger
-      ? { ...summarizeAccounts(accountLedger, provider, ranges[provider], new Date(collectedAt)), error: accountLedgerError }
-      : { trackingStartedAt: null, items: [], error: accountLedgerError };
+    snapshot[provider].accounts = !['claude', 'codex'].includes(provider)
+      ? { trackingStartedAt: null, items: [], error: null }
+      : accountLedger
+        ? { ...summarizeAccounts(accountLedger, provider, ranges[provider], new Date(collectedAt)), error: accountLedgerError }
+        : { trackingStartedAt: null, items: [], error: accountLedgerError };
   }
   if (local) snapshot.diagnostics = local.diagnostics;
   if (oauthRateLimits) snapshot.claude.rateLimits = oauthRateLimits;
@@ -1026,7 +1036,7 @@ function togglePanel(anchor = 'tray') {
 function updateTray(snapshot) {
   if (!tray) return;
   const { claude, codex, grok } = snapshot;
-  const working = [...claude.sessions, ...codex.sessions, ...grok.sessions].filter((session) => session.state === 'working').length;
+  const working = PROVIDER_IDS.flatMap((id) => snapshot[id].sessions).filter((session) => session.state === 'working').length;
   const attention = claude.sessions.filter((session) => session.state === 'attention');
   const nextAttention = new Set(attention.map((session) => session.sessionId));
   if (Notification.isSupported()) {
@@ -1074,9 +1084,40 @@ Grok (${rangeLabel(grok)}): ${fmtTokens(grok.totals.output)} out · ≈$${grok.c
 function publishUsage(snapshot) {
   usageSnapshot = snapshot;
   updateTray(snapshot);
-  for (const window of [panelWin, floatingWin]) {
+  // The report window takes the event as its cue to ask for a fresh report.
+  for (const window of [panelWin, floatingWin, reportWin]) {
     if (window && !window.isDestroyed()) window.webContents.send('usage-updated', snapshot);
   }
+}
+
+// A normal window, unlike the panel: it is read at length, resized and alt-tabbed to.
+// Destroyed on close so the report's data doesn't sit in memory between uses.
+function openReportWindow() {
+  if (reportWin && !reportWin.isDestroyed()) {
+    if (reportWin.isMinimized()) reportWin.restore();
+    reportWin.show();
+    reportWin.focus();
+    return;
+  }
+  reportWin = new BrowserWindow({
+    ...REPORT_SIZE,
+    show: false,
+    title: 'AI Code Usage 用量报表',
+    autoHideMenuBar: true,
+    backgroundColor: '#16161a',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      sandbox: true,
+      spellcheck: false,
+    },
+  });
+  reportWin.removeMenu();
+  reportWin.loadFile(path.join(__dirname, 'renderer', 'report.html'));
+  reportWin.once('ready-to-show', () => reportWin && reportWin.show());
+  reportWin.on('closed', () => {
+    reportWin = null;
+  });
+  if (panelWin && panelWin.isVisible()) panelWin.hide();
 }
 
 function refreshUsage() {
@@ -1094,7 +1135,7 @@ function refreshUsage() {
 }
 
 async function setUsageRange(provider, value) {
-  if (!['claude', 'codex', 'grok'].includes(provider)) throw new RangeError('未知的用量来源');
+  if (!PROVIDER_IDS.includes(provider)) throw new RangeError('未知的用量来源');
   const rangeDays = normalizeRangeDays(value, null);
   if (!rangeDays) throw new RangeError('统计天数必须是 1 到 90 的整数');
   settings[`${provider}RangeDays`] = rangeDays;
@@ -1214,6 +1255,7 @@ function syncAutoLaunch() {
 function quickMenuTemplate(includePaths) {
   const items = [
     { label: '打开完整面板', click: () => togglePanel(includePaths ? 'tray' : settings.floatingPosition) },
+    { label: '打开用量报表', click: openReportWindow },
     { label: '刷新', click: refreshUsage },
     {
       label: '开机自启',
@@ -1281,6 +1323,8 @@ function quickMenuTemplate(includePaths) {
       { label: '打开 Claude 会话目录', click: () => shell.openPath(DEFAULT_ROOT) },
       { label: '打开 Codex 会话目录', click: () => shell.openPath(DEFAULT_CODEX_ROOT) },
       { label: '打开 Grok 会话目录', click: () => shell.openPath(path.join(DEFAULT_GROK_ROOT, 'sessions')) },
+      { label: '打开 Antigravity 数据目录', click: () => shell.openPath(DEFAULT_ANTIGRAVITY_HOME) },
+      { label: '打开 OpenCode 数据目录', click: () => shell.openPath(path.dirname(openCodeDbPath())) },
     );
   }
   items.push(
@@ -1369,6 +1413,15 @@ ipcMain.handle('account-ledger-clear', async (event) => {
   if (refreshPromise) await refreshPromise.catch(() => {});
   clearAccountLedger();
   return refreshUsage();
+});
+ipcMain.handle('report', (event, days) => {
+  if (!reportWin || event.sender !== reportWin.webContents) throw new Error('无效的报表请求');
+  const rangeDays = normalizeRangeDays(days, null);
+  if (!rangeDays) throw new RangeError('报表天数必须是 1 到 90 的整数');
+  return collectReport(rangeDays);
+});
+ipcMain.on('open-report', (event) => {
+  if (panelWin && event.sender === panelWin.webContents) openReportWindow();
 });
 ipcMain.handle('floating-state', () => floatingState(floatingExpanded));
 ipcMain.on('floating-expanded', (event, state) => {

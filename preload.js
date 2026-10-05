@@ -31,4 +31,6 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.send('floating-expanded', { expanded, reduceMotion }),
   openPanel: () => ipcRenderer.send('open-panel'),
   closePanel: () => ipcRenderer.send('close-panel'),
+  openReport: () => ipcRenderer.send('open-report'),
+  getReport: (days) => ipcRenderer.invoke('report', days),
 });

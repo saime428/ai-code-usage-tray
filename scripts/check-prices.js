@@ -1,8 +1,9 @@
 'use strict';
 // Checks lib/prices.json two ways, because each catches what the other can't:
 //
-//   official  Anthropic's and OpenAI's own pricing pages, read from their markdown
-//             (.md) versions, every cell priced through the real costOf(), plus the
+//   official  Anthropic's, OpenAI's and Google's (Gemini, for Antigravity) own pricing
+//             pages, read from their markdown versions, every cell priced through the
+//             real costOf(), plus the
 //             Codex model page: whatever Codex offers must have a row. Only this
 //             notices a model with no row at all — gpt-6-sol priced at zero for weeks
 //             because nothing asked the Codex model page what Codex offers.
@@ -23,6 +24,7 @@
 const fs = require('fs');
 const claude = require('../lib/usage');
 const codex = require('../lib/codex-usage');
+const antigravity = require('../lib/antigravity-usage');
 const { BUNDLED } = require('../lib/prices');
 
 // Pass a local path to check LiteLLM offline or behind a proxy that mangles large bodies:
@@ -34,7 +36,12 @@ const OFFICIAL = {
   anthropic: 'https://platform.claude.com/docs/en/about-claude/pricing.md',
   openai: 'https://developers.openai.com/api/docs/pricing.md',
   codexModels: 'https://developers.openai.com/codex/models.md',
+  // Google serves the markdown at .md.txt (plain .md answers with the HTML page).
+  gemini: 'https://ai.google.dev/gemini-api/docs/pricing.md.txt',
 };
+// Gemini sections that aren't chat models: their prices are per image, second or song,
+// and an id like gemini-2.5-flash-image would prefix-match a text row.
+const GEMINI_NOT_TEXT = /image|tts|live|audio|transcribe|embedding|robotics|omni|veo|lyria|gemma/i;
 const FETCH_TIMEOUT_MS = 30_000;
 // Stay under Codex's 272k long-context tier so costOf() doesn't apply that 2x.
 const N = 100_000;
@@ -58,6 +65,12 @@ const CODEX_KINDS = [
   ['input', 'input_cost_per_token', { input: N }],
   ['output', 'output_cost_per_token', { output: N }],
   ['cached input', 'cache_read_input_token_cost', { input: N, cacheRead: N }],
+];
+// Antigravity's input excludes its cache reads, unlike Codex's.
+const GEMINI_KINDS = [
+  ['input', 'input_cost_per_token', { input: N }],
+  ['output', 'output_cost_per_token', { output: N }],
+  ['cached input', 'cache_read_input_token_cost', { cacheRead: N }],
 ];
 
 const REGION_HINT = 'blocked region? behind a proxy, rerun with NODE_USE_ENV_PROXY=1';
@@ -204,6 +217,53 @@ async function checkOfficial() {
     verified += 1;
     if (!codex.priceFor(id)) drift.push(`official  ${id}  is offered in Codex but has no row in lib/prices.json`);
   }
+
+  // Gemini: one "## Model" section per model, its ids in `code` spans, a "### Standard"
+  // table whose paid-tier cell reads "$2.00, prompts <= 200k tokens $4.00, prompts > 200k".
+  const gemini = await officialPage(OFFICIAL.gemini);
+  const geminiSeen = new Set();
+  const keyOf = (row) => Object.keys(BUNDLED.gemini).find((key) => BUNDLED.gemini[key] === row);
+  for (const section of gemini.split('\n## ').slice(1)) {
+    const title = section.split('\n')[0];
+    if (GEMINI_NOT_TEXT.test(title)) continue;
+    const ids = [...section.matchAll(/\[`([a-z0-9][a-z0-9.-]*)`\]/g)].map((m) => m[1]);
+    const standard = section.split('\n### Standard')[1];
+    if (!ids.length || !standard) continue;
+    const cell = (label) => {
+      const line = standard.split('\n').find((l) => l.startsWith(`| ${label}`));
+      return line ? line.split('|').slice(1, -1).pop().trim() : null;
+    };
+    const rates = (label) => {
+      const text = cell(label);
+      const amounts = [...String(text || '').matchAll(/\$([\d.]+)/g)].map((m) => Number(m[1]));
+      return { base: amounts[0] ?? null, long: /\\?>\s*200k/i.test(text || '') ? amounts[1] ?? null : null, text };
+    };
+    const input = rates('Input price');
+    const output = rates('Output price');
+    const cached = rates('Context caching price');
+    for (const id of ids) {
+      const row = antigravity.geminiPriceFor(id);
+      if (!row) continue; // a model Antigravity hasn't sent; nothing to price yet
+      geminiSeen.add(keyOf(row));
+      if (input.base === null || output.base === null) {
+        blind.push(`${OFFICIAL.gemini}: ${id} has no readable Standard input/output`);
+        continue;
+      }
+      const cost = (tokens) => antigravity.costOf(id, { input: 0, cacheRead: 0, output: 0, ...tokens });
+      // 100k tokens: a million would cross the 200k long-context line on the Pro rows.
+      compare(`${id}  input`, (cost({ input: N }) * M) / N, input.base);
+      compare(`${id}  output`, cost({ output: M }), output.base);
+      if (cached.base !== null) compare(`${id}  cached input`, cost({ cacheRead: M / 10 }) * 10, cached.base);
+      const LONG_PROMPT = 300_000; // over 200k: the long-tier rates apply to the whole call
+      if (input.long !== null) compare(`${id}  long input`, (cost({ input: LONG_PROMPT }) * M) / LONG_PROMPT, input.long);
+      if (output.long !== null) compare(`${id}  long output`, cost({ input: LONG_PROMPT, output: M }) - cost({ input: LONG_PROMPT }), output.long);
+      if (/starting [A-Z][a-z]+ \d+, \d{4}/.test(input.text || '')) notes.push(`official  ${id}  has a dated price change: ${input.text}`);
+    }
+  }
+  if (!geminiSeen.size) blind.push(`${OFFICIAL.gemini}: no section matched the gemini table`);
+  for (const id of Object.keys(BUNDLED.gemini)) {
+    if (geminiSeen.size && !geminiSeen.has(id)) notes.push(`official  ${id}  is no longer on the pricing page`);
+  }
   return { drift, notes, blind, verified };
 }
 
@@ -245,6 +305,14 @@ async function checkLiteLLM() {
 
   for (const model of Object.keys(claude.PRICES)) comparePriced('claude', model, CLAUDE_KINDS, claude.costOf);
   for (const model of Object.keys(codex.PRICES)) comparePriced('codex', model, CODEX_KINDS, codex.costOf);
+  // LiteLLM files Gemini API rows as gemini/<id>, often only under a -preview id.
+  for (const model of Object.keys(BUNDLED.gemini)) {
+    const key = [`gemini/${model}`, model, `gemini/${model}-preview`].find((k) => upstream[k]) || `gemini/${model}`;
+    const cost = (_id, tokens) => antigravity.costOf(model, { input: 0, cacheRead: 0, output: 0, ...tokens });
+    const before = missing.length;
+    comparePriced('gemini', key, GEMINI_KINDS, cost);
+    if (missing.length > before) missing[missing.length - 1] = `gemini  ${model}`;
+  }
 
   // Pass 2: any upstream id we resolve but price differently is a missing row.
   for (const [id, entry] of Object.entries(upstream)) {
@@ -263,6 +331,16 @@ async function checkLiteLLM() {
     const ours = costOf(id, { input: N });
     if (differs(theirs, ours) && !Object.hasOwn(claude.PRICES, id) && !Object.hasOwn(codex.PRICES, id)) {
       drift.push(`unlisted id  ${id}  resolves to ${ours} → upstream ${theirs}  (per ${N.toLocaleString()} tokens)`);
+    }
+  }
+  // The same hunt for Gemini text models (gemini/<id>), e.g. a -lite sibling with no row.
+  for (const [id, entry] of Object.entries(upstream)) {
+    const bare = id.replace(/^gemini\//, '');
+    if (bare === id || GEMINI_NOT_TEXT.test(bare) || !entry || typeof entry.input_cost_per_token !== 'number') continue;
+    if (!antigravity.geminiPriceFor(bare) || Object.hasOwn(BUNDLED.gemini, bare)) continue;
+    const ours = antigravity.costOf(bare, { input: N, cacheRead: 0, output: 0 });
+    if (differs(rate(entry, 'input_cost_per_token'), ours)) {
+      drift.push(`unlisted id  ${id}  resolves to ${ours} → upstream ${rate(entry, 'input_cost_per_token')}  (per ${N.toLocaleString()} tokens)`);
     }
   }
   return { drift, missing, resolved, verified };
@@ -307,7 +385,8 @@ ${drift.length} difference(s). To fix:
   1. "official" lines come from the vendors' pages; confirm LiteLLM lines there too:
        https://platform.claude.com/docs/en/about-claude/pricing
        https://developers.openai.com/api/docs/pricing
-  2. Edit lib/prices.json: the claude or codex section, one row per model.
+       https://ai.google.dev/gemini-api/docs/pricing
+  2. Edit lib/prices.json: the claude, codex or gemini section, one row per model.
        Add a row if the model has none ("has no row" and "unlisted id" lines mean exactly that).
        Key = model id without date suffix; the longest matching key wins.
   3. Set "snapshot" in lib/prices.json to today's date.

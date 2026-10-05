@@ -29,16 +29,35 @@
       user-select: none;
     }
     .wrap { padding: 14px 16px; }
-    h1 {
+    .top {
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      margin: 0 0 2px;
+      gap: 8px;
+      margin: 0 0 4px;
       color: var(--subtle);
       font-size: 13px;
       font-weight: 600;
     }
-    h1 .date { display: block; color: var(--muted); font-size: 10px; font-weight: 400; }
-    .range-meta { text-align: right; }
+    /* Five tabs fit on one line even when a scrollbar takes 15px of the 380px panel. */
+    .engines { display: flex; flex-wrap: wrap; gap: 2px 6px; min-width: 0; white-space: nowrap; }
+    .engine[hidden] { display: none; }
+    .report-link {
+      flex: none;
+      height: 22px;
+      padding: 0 8px;
+      border: 1px solid #44444d;
+      border-radius: 4px;
+      background: var(--surface);
+      color: #d4d2cf;
+      font: 600 11px/1 'Segoe UI', system-ui, sans-serif;
+      cursor: pointer;
+      transition: border-color 160ms ease, color 160ms ease;
+    }
+    .report-link:hover { border-color: #666670; color: var(--text); }
+    .headline { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+    .headline .date { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .range-meta { flex: none; margin-bottom: 7px; color: var(--subtle); font-size: 11px; text-align: right; }
     .range-control { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
     .range-control input {
       width: 42px;
@@ -63,7 +82,7 @@
       cursor: pointer;
     }
     .engine.active { color: var(--text); }
-    .engine:focus-visible, .session-button:focus-visible, .account-button:focus-visible, .account-code:focus-visible, .account-cancel:focus-visible, .range-control input:focus-visible, .ledger-clear:focus-visible { outline: 2px solid #80aaff; outline-offset: 2px; }
+    .engine:focus-visible, .report-link:focus-visible, .session-button:focus-visible, .account-button:focus-visible, .account-code:focus-visible, .account-cancel:focus-visible, .range-control input:focus-visible, .ledger-clear:focus-visible { outline: 2px solid #80aaff; outline-offset: 2px; }
     .cost-label { margin-top: 6px; color: var(--muted); font-size: 10px; }
     .big { margin: 0; color: var(--accent); font-size: 30px; font-weight: 700; }
     .sub { margin: 2px 0 14px; color: var(--subtle); }
@@ -200,17 +219,28 @@
     .feedback { min-height: 18px; margin-top: 4px; color: var(--ok); font-size: 11px; }
     .note { margin-top: 8px; color: #66666e; font-size: 10px; }
     .note .warning { color: var(--warn); }
-    @media (prefers-reduced-motion: reduce) { .session-button, .account-button { transition: none; } }
+    @media (prefers-reduced-motion: reduce) { .session-button, .account-button, .report-link { transition: none; } }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>
-      <span><button class="engine active" data-engine="claude" aria-pressed="true">Claude</button> / <button class="engine" data-engine="codex" aria-pressed="false">Codex</button> / <button class="engine" data-engine="grok" aria-pressed="false">Grok</button></span>
-      <span class="range-meta"><label class="range-control">最近 <input id="range-days" type="number" min="1" max="90" step="1" inputmode="numeric" aria-label="最近统计天数" /> 天</label><span class="date" id="date"></span></span>
-    </h1>
-    <div class="cost-label" id="cost-label">今日等价值</div>
-    <div class="big" id="cost">—</div>
+    <div class="top">
+      <nav class="engines" aria-label="用量来源">
+        <button class="engine active" data-engine="claude" aria-pressed="true">Claude</button>
+        <button class="engine" data-engine="codex" aria-pressed="false">Codex</button>
+        <button class="engine" data-engine="grok" aria-pressed="false">Grok</button>
+        <button class="engine" data-engine="antigravity" aria-pressed="false" hidden>Antigravity</button>
+        <button class="engine" data-engine="opencode" aria-pressed="false" hidden>OpenCode</button>
+      </nav>
+      <button type="button" class="report-link" id="open-report" title="所有工具的日趋势、项目、会话和模型明细">报表</button>
+    </div>
+    <div class="headline">
+      <div>
+        <div class="cost-label" id="cost-label">今日等价值</div>
+        <div class="big" id="cost">—</div>
+      </div>
+      <div class="range-meta"><label class="range-control">最近 <input id="range-days" type="number" min="1" max="90" step="1" inputmode="numeric" aria-label="最近统计天数" /> 天</label><span class="date" id="date"></span></div>
+    </div>
     <div class="sub" id="totals">—</div>
     <div class="limits" id="limits" hidden></div>
     <section class="account" id="claude-account" hidden aria-label="Claude 账户连接">
@@ -249,6 +279,16 @@
     };
     const shortModel = (model) => model.replace(/^claude-/, '').replace(/-\d{8}$/, '');
     const stateLabel = { working: '工作中', attention: '需处理', idle: '空闲' };
+    // costLabel: what the big number is; note: where it comes from (see README).
+    const providerInfo = {
+      claude: { name: 'Claude', costLabel: '等价值', requests: '请求', note: (usage) => `Anthropic 标准 API 等价值（订阅用户不会按此金额计费）· 价格快照 ${usage.priceSnapshot || '未知'}` },
+      codex: { name: 'Codex', costLabel: '等价值', requests: '轮次', note: (usage) => `OpenAI 标准 API 等价值（订阅用户不会按此金额计费）· 价格快照 ${usage.priceSnapshot || '未知'}` },
+      grok: { name: 'Grok', costLabel: '金额', requests: '轮次', note: () => 'Grok CLI 记录的官方结算金额（订阅额度内不会另外扣费）' },
+      antigravity: { name: 'Antigravity', costLabel: '等价值', requests: '请求', note: (usage) => `Gemini 标准 API 等价值，Claude 模型按 Anthropic 价（订阅用户不会按此金额计费）· 价格快照 ${usage.priceSnapshot || '未知'}` },
+      opencode: { name: 'OpenCode', costLabel: '记录金额', requests: '请求', note: () => 'OpenCode 自己按 models.dev 价格记下的金额（订阅和本地模型记为 0）' },
+    };
+    // The original three always show; a newer source only once its data exists here.
+    const alwaysShown = new Set(['claude', 'codex', 'grok']);
     const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
     const windowLabel = (minutes) =>
       minutes % 1440 === 0 ? minutes / 1440 + 'd' : minutes % 60 === 0 ? minutes / 60 + 'h' : minutes + 'm';
@@ -270,7 +310,12 @@
 
     function render() {
       if (!latest) return;
+      document.querySelectorAll('.engine').forEach((button) => {
+        const id = button.dataset.engine;
+        button.hidden = !alwaysShown.has(id) && !(latest[id] && latest[id].detected) && selected !== id;
+      });
       const usage = latest[selected];
+      const info = providerInfo[selected];
       const isClaude = selected === 'claude';
       const unknown = new Set(usage.unknownModels || []);
       const costUnavailable = isClaude && usage.costCoverage === 'unavailable';
@@ -281,7 +326,7 @@
       if (document.activeElement !== rangeInput) rangeInput.value = rangeDays;
       rangeInput.disabled = rangeBusy;
       document.getElementById('date').textContent = usage.date;
-      document.getElementById('cost-label').textContent = `${rangeLabel}${selected === 'grok' ? '金额' : '等价值'}`;
+      document.getElementById('cost-label').textContent = `${rangeLabel}${info.costLabel}`;
       document.getElementById('cost').textContent = costText(usage, isClaude, unknown);
       document.getElementById('totals').textContent = costUnavailable
         ? desktopChatDetected
@@ -353,10 +398,9 @@
         ? desktopChatDetected
           ? '普通 Home 聊天只能识别会话；token/金额仅统计有本地 transcript 的 Claude Code/Cowork。'
           : 'Claude Desktop 未提供本地 token 明细。'
-        : `${rangeLabel}还没有 ${isClaude ? 'Claude' : 'Codex'} 用量记录。`;
-      document.getElementById('model-head').innerHTML = isClaude
-        ? '<th>模型</th><th>请求</th><th>In</th><th>Out</th><th>Cache读</th><th>$</th>'
-        : '<th>模型</th><th>轮次</th><th>In</th><th>Out</th><th>Cache读</th><th>$</th>';
+        : `${rangeLabel}还没有 ${info.name} 用量记录。`;
+      document.getElementById('model-head').innerHTML =
+        `<th>模型</th><th>${info.requests}</th><th>In</th><th>Out</th><th>Cache读</th><th>$</th>`;
       table.querySelector('tbody').innerHTML = models.map(([model, bucket]) => `<tr>
         <td title="${esc(model)}">${esc(shortModel(model))}</td><td>${bucket.requests}</td>
         <td>${fmt(bucket.input)}</td><td>${fmt(bucket.output)}</td><td>${fmt(bucket.cacheRead)}</td>
@@ -400,7 +444,6 @@
           : `<div class="session">${content}</div>`;
       }).join('') || `<div class="empty">${sessionEmpty}</div>`;
 
-      const provider = isClaude ? 'Anthropic' : 'OpenAI';
       const warnings = [
         costUnavailable
           ? desktopChatDetected
@@ -416,9 +459,7 @@
         isClaude && usage.rateLimits?.source === 'desktop' ? '≈ 重置时间由 Claude Desktop 本地采样推算，约有 5 分钟误差' : '',
       ].filter(Boolean);
       document.getElementById('note').innerHTML =
-        (selected === 'grok'
-          ? 'Grok CLI 记录的官方结算金额（订阅额度内不会另外扣费）· 每 30 秒刷新。'
-          : `${provider} 标准 API 等价值（订阅用户不会按此金额计费）· 价格快照 ${esc(usage.priceSnapshot || '未知')} · 每 30 秒刷新。`) +
+        `${esc(info.note(usage))} · 每 30 秒刷新。` +
         (warnings.length ? `<br><span class="warning">${esc(warnings.join('；'))}</span>` : '');
     }
 
@@ -547,7 +588,7 @@
       input.setCustomValidity('');
       if (latest && rangeDays === latest[provider].rangeDays) return;
       rangeBusy = true;
-      document.getElementById('feedback').textContent = `正在统计 ${{ claude: 'Claude', codex: 'Codex', grok: 'Grok' }[provider]} 最近 ${rangeDays} 天…`;
+      document.getElementById('feedback').textContent = `正在统计 ${providerInfo[provider].name} 最近 ${rangeDays} 天…`;
       render();
       try {
         latest = await window.api.setUsageRange(provider, rangeDays);
@@ -582,6 +623,8 @@
         render();
       }
     });
+
+    document.getElementById('open-report').addEventListener('click', () => window.api.openReport());
 
     window.addEventListener('mouseover', () => clearTimeout(closeTimer));
     window.addEventListener('mouseout', (event) => {
