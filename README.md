@@ -34,7 +34,7 @@
 | **Five tools in one place** | Claude Code, Claude Desktop, Codex CLI/Desktop, Grok CLI, Antigravity (IDE and CLI) and OpenCode share one panel. Antigravity and OpenCode tabs appear once their data exists on this machine. |
 | **Usage report** | A resizable report window across every tool: daily trend, hour of day, per tool, per project, the costliest sessions and per model, against the previous period. Also on the command line. |
 | **Independent date ranges** | Each provider gets its own 1–90 day range. |
-| **Quota windows** | 5h / 7d usage percentages, reset times and data freshness. With a Claude account connected, the Fable window appears when available. |
+| **Quota windows** | 5h / 7d usage percentages, reset times and data freshness. With a Claude account connected, the Fable window appears when available; while Antigravity runs, its Gemini and Claude/GPT windows too. |
 | **Per-account usage** | Once enabled on this machine, tokens accumulate under the current account; older records stay out. The ledger is encrypted locally by Windows. |
 | **Session states** | Working, needs attention, and idle. Desktop sessions open straight from the panel. |
 | **Live activity ring** | While a session is running, that provider lights up with a ring of travelling light on the floating bar. It watches session directories for writes instead of waiting for the 30s refresh. Switch it to rainbow or turn it off. |
@@ -44,6 +44,12 @@
 | **Zero API keys** | Local mode needs no API key. Claude OAuth is optional, for more accurate quotas. |
 
 ## What's new
+
+### v1.7.0
+
+- **Antigravity quota.** While Antigravity is running, the panel and the floating bar show the 5-hour and weekly windows its Settings → Models page shows, for Gemini and for Claude/GPT, with reset times. Antigravity keeps them only in its running language server, never on disk, so the app asks that server on 127.0.0.1. Its cached figures do not follow usage, so the app has it refresh them whenever this machine's Antigravity usage grows, when a window resets, and every 10 minutes: after a message the bar updates within one 30-second refresh. With Antigravity closed, the last figures stay, marked with their age. See [Where the data comes from](#where-the-data-comes-from).
+- **Pick which tools the floating bar shows.** Tray or bar menu → 悬浮条显示: by default the tools found on this machine, or any of the five you tick. Antigravity and OpenCode can now sit on the bar, with their official marks. The bar sizes itself to the tools and numbers it shows, and when the screen is too short for the expanded cards they scroll.
+- **Fixed: earlier parts of a Claude Desktop conversation appeared as separate CLI sessions.** When a conversation runs out of context or is rewound, Claude Desktop carries on in a new transcript and lists the earlier ones in `priorCliSessionIds`. Those earlier transcripts matched no Desktop session, so the session list showed them as CLI sessions with the same title — 3 of 6 entries on the author's machine. They now belong to the conversation: one row in the session list, one session in the report, with Desktop's title. Amounts are unchanged to the cent.
 
 ### v1.6.0
 
