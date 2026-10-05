@@ -338,7 +338,7 @@ npm run dist
 git status --short
 ```
 
-Price fixes don't need a release — see [Updating the price table](#updating-the-price-table). For a release, bump the version in `package.json`, refresh the "What's new" section at the top of both READMEs, install the Setup build on a clean Windows machine, then create a GitHub Release with both `.exe` files and their SHA-256.
+Price fixes don't need a release — see [Updating the price table](#updating-the-price-table). For a release, bump the version in `package.json`, refresh the "What's new" section at the top of both READMEs, create a GitHub Release with both `.exe` files and their SHA-256, then install the Setup build from that Release on a clean Windows machine. Windows Sandbox is enough (built into Pro, Enterprise and Education; turn it on under "Turn Windows features on or off"). Download the installer with the sandbox's browser instead of copying it in: a copied file has no Mark of the Web, so SmartScreen never shows. With no AI tools installed, the panel and the report should open empty without errors, `%APPDATA%\ai-code-usage-tray\prices.json` should appear about 15 seconds after launch, and after uninstalling there should be no `AI Code Usage Tray` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 
 ## Current limitations
 

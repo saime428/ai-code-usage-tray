@@ -335,7 +335,7 @@ npm run dist
 git status --short
 ```
 
-改价不需要发版，见[更新价格表](#更新价格表)。发版时：更新 `package.json` 版本和 README 顶部的「最新更新」小节，在干净的 Windows 环境里安装 Setup 版验证，再创建 GitHub Release，上传两个 `.exe` 及各自的 SHA-256。
+改价不需要发版，见[更新价格表](#更新价格表)。发版时：更新 `package.json` 版本和 README 顶部的「最新更新」小节，创建 GitHub Release，上传两个 `.exe` 及各自的 SHA-256，再从这个 Release 下载 Setup 版，在干净的 Windows 环境里安装验证。用 Windows 沙盒就够了（专业版、企业版和教育版自带，在「启用或关闭 Windows 功能」里打开）。安装包要用沙盒里的浏览器下载，不要从本机拷进去：拷进去的文件没有「来自网络」的标记，SmartScreen 不会弹出来。沙盒里没装任何 AI 工具，面板和报表应该正常显示为空、没有报错；启动后 15 秒左右应该生成 `%APPDATA%\ai-code-usage-tray\prices.json`；卸载后 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 下不应再有 `AI Code Usage Tray`。
 
 ## 当前限制
 

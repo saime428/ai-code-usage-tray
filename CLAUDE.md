@@ -67,7 +67,7 @@ npm run dist      # 测试后生成 Windows x64 一键安装包(Setup)和便携�
 - [x] **贴边悬浮条**:主屏顶部/右侧可选,5h/7d 收起态、悬停详情,与托盘面板共享刷新。全屏应用时默认自动隐藏(托盘菜单可关):`lib/fullscreen-watch.js` 常驻 PowerShell 轮询 `SHQueryUserNotificationState`,它复用资源管理器的 rude-app 判定:独占全屏、演示模式、以及盖满整个显示器的无边框窗口(游戏的无边框窗口化)都算全屏,普通最大化窗口(任务栏仍可见)不算——实测返回值分别为 2 和 5。v1.0 曾用前台窗口矩形自判,在 f07254a 被移除,原因未记录。
 - [x] **Desktop 会话跳转**:Codex 精确打开 task;Claude 有 bridge id 时精确打开,否则复制标题并唤起客户端;CLI 不启动终端。
 - [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 一键安装包(按用户安装,主推)和便携版;README.md 为英文主页,README.zh-CN.md 为中文版,顶部互挂切换链接。
-- [x] **公开发布**:MIT + GitHub 公开仓库 + v1.0.0 Release 已完成；后续再做干净 Windows 验证和社区收录。
+- [x] **公开发布**:MIT + GitHub 公开仓库 + v1.0.0 Release 已完成。干净 Windows 验证从 1.6.0 起在 Windows 沙盒里做(步骤见 README 发布检查);社区收录的 PR 已提:1c7/chinese-independent-developer#1463(2026-10-05)。
 - [x] **价格表在线更新**(1.5.0):改价推 `lib/prices.json` 到 main,已安装的应用一天内用上,不用发版;托盘「自动更新价格表」可关。
 - [x] **Antigravity / OpenCode 支持**(1.6.0):面板页签(本机有数据才出现)、会话列表、报表;不进悬浮条和托盘提示(没有额度窗口)。
 - [x] **用量报表**(1.6.0):跨工具的独立窗口 + `npm run usage -- --days/--by`。
