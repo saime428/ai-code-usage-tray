@@ -1,7 +1,7 @@
 {
   "about": "USD per 1M tokens, official standard API list prices. Installed apps (1.5.0+) download this exact file from GitHub main at launch and once a day, so a push here reaches them without a release. Keep the path, bump snapshot on every change, never drop a row, and use a new schema number if an existing field changes meaning. How to edit: README, Updating the price table.",
   "schema": 1,
-  "snapshot": "2026-09-26",
+  "snapshot": "2026-10-04",
   "claude": {
     "claude-fable-5-1": { "input": 10, "output": 50, "cacheRead": 0.025 },
     "claude-mythos-5-1": { "input": 10, "output": 50, "cacheRead": 0.025 },
@@ -24,6 +24,7 @@
   },
   "codex": {
     "gpt-6-astra": { "input": 10, "cachedInput": 1, "output": 50 },
+    "gpt-6.1-sol": { "input": 2, "cachedInput": 0.1, "output": 10 },
     "gpt-6-sol": { "input": 2, "cachedInput": 0.2, "output": 10 },
     "gpt-6-luna": { "input": 0.1, "cachedInput": 0.01, "output": 0.5 },
     "gpt-5.5-pro": { "input": 30, "cachedInput": 30, "output": 180, "note": "No cached-input rate on the pricing page (\"-\"), so cached tokens bill at the input rate." },
@@ -42,5 +43,18 @@
     "gpt-5.6": "gpt-5.6-sol",
     "gpt-daybreak-blue-latest": "gpt-5.6-sol",
     "gpt-daybreak-red-latest": "gpt-5.6-cyber"
+  },
+  "gemini": {
+    "gemini-3.8-flash": { "input": 0.75, "cachedInput": 0.075, "output": 3.75, "note": "Through 2026-12-31. From 2027-01-01 the pricing page lists $1.50 / $0.15 / $7.50 - update then." },
+    "gemini-3.7-flash": { "input": 0.75, "cachedInput": 0.075, "output": 3.75, "note": "Through 2026-12-31. From 2027-01-01 the pricing page lists $1.50 / $0.15 / $7.50 - update then." },
+    "gemini-3.6-flash": { "input": 0.75, "cachedInput": 0.075, "output": 3.75, "note": "Through 2026-12-31. From 2027-01-01 the pricing page lists $1.50 / $0.15 / $7.50 - update then." },
+    "gemini-3.5-flash-lite": { "input": 0.3, "cachedInput": 0.03, "output": 2.5 },
+    "gemini-3.5-flash": { "input": 1.5, "cachedInput": 0.15, "output": 9 },
+    "gemini-3.1-flash-lite": { "input": 0.25, "cachedInput": 0.025, "output": 1.5 },
+    "gemini-3.1-pro": { "input": 2, "cachedInput": 0.2, "output": 12, "longContext": { "above": 200000, "input": 4, "cachedInput": 0.4, "output": 18 }, "note": "Official id gemini-3.1-pro-preview; the key also covers -preview-customtools." },
+    "gemini-3-flash": { "input": 0.5, "cachedInput": 0.05, "output": 3, "note": "Official id gemini-3-flash-preview. Antigravity sends experiment ids such as gemini-3-flash-a." },
+    "gemini-2.5-pro": { "input": 1.25, "cachedInput": 0.125, "output": 10, "longContext": { "above": 200000, "input": 2.5, "cachedInput": 0.25, "output": 15 } },
+    "gemini-2.5-flash-lite": { "input": 0.1, "cachedInput": 0.01, "output": 0.4 },
+    "gemini-2.5-flash": { "input": 0.3, "cachedInput": 0.03, "output": 2.5 }
   }
 }
