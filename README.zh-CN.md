@@ -5,7 +5,7 @@
 <h1 align="center">AI Code Usage Tray</h1>
 
 <p align="center">
-  本地优先的 Windows 托盘监视器，用来查看 Claude Code / Desktop、Codex CLI / Desktop 和 Grok CLI 的用量、额度、账号和会话状态。
+  本地优先的 Windows 托盘监视器，用来查看 Claude Code / Desktop、Codex CLI / Desktop、Grok CLI、Antigravity 和 OpenCode 的用量、额度、账号和会话状态，并提供跨工具的用量报表。
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 </p>
 
 > [!NOTE]
-> 面板里 Claude / Codex 的金额是按官方标准 API 价格计算的**等价值**（价格表会从本仓库自动更新，日期显示在面板底部），用来对照消耗快慢，订阅不会按这个金额扣费。Grok 的金额来自 Grok CLI 记录的官方结算值，订阅额度内同样不会另外扣费。
+> 面板里 Claude / Codex / Antigravity 的金额是按官方标准 API 价格计算的**等价值**（价格表会从本仓库自动更新，日期显示在面板底部），用来对照消耗快慢，订阅不会按这个金额扣费。Grok 的金额来自 Grok CLI 记录的官方结算值，订阅额度内同样不会另外扣费。OpenCode 的金额是 OpenCode 自己给每条消息记下的值。
 >
 > Claude Desktop 的普通 Home 聊天，本机只有会话元数据和额度百分比，没有精确 token 明细，所以算不出金额。金额只统计本地有 transcript 的 Claude Code / Cowork 会话。连接 Claude 账户只会让额度和重置时间更准，补不齐 Home 聊天的 token。
 
@@ -31,7 +31,8 @@
 
 | | |
 | --- | --- |
-| **Claude + Codex + Grok 一处查看** | Claude Code、Claude Desktop、Codex CLI/Desktop 和 Grok CLI 放在同一面板。 |
+| **五个工具一处查看** | Claude Code、Claude Desktop、Codex CLI/Desktop、Grok CLI、Antigravity（IDE 和 CLI）和 OpenCode 放在同一面板。Antigravity、OpenCode 的页签在本机有数据时才出现。 |
+| **用量报表** | 一个可调大小的报表窗口，覆盖所有工具：日趋势、时段分布、按工具、按项目、最贵的会话和按模型，并和上一周期对比。命令行也能看。 |
 | **独立日期范围** | 每个来源可以各自选最近 1–90 天，互不影响。 |
 | **额度窗口** | 显示 5h / 7d 使用比例、重置时间和数据更新时间。连上 Claude 账户后，有数据也会显示 Fable 窗口。 |
 | **分账号用量** | 从本机启用分账号统计后，按当前账号累计 Token，更早的记录不计在内。账本由 Windows 加密保存在本地。 |
@@ -43,6 +44,16 @@
 | **零 API Key** | 本地模式不需要 API Key。Claude OAuth 是可选项，用来读更准的额度。 |
 
 ## 最新更新
+
+### v1.6.0
+
+- **用量报表**。托盘菜单「打开用量报表」或面板上的「报表」按钮，打开一个覆盖所有工具的报表窗口：金额、Token、请求、会话和缓存命中率，并和上一周期对比；按天堆叠的趋势图（今日按小时）；一天里的时段分布；按工具；按项目——同一个目录下不同工具的用量合在一起，Claude Code 的 worktree 归回所在仓库；最贵的会话——子代理和 resume 复制过来的历史都记回真正跑它的会话；按模型。可以按工具筛选，图表可在金额和 Token 之间切换。见[用量报表](#用量报表)。
+- **支持 Antigravity 和 OpenCode**。Antigravity 的 IDE 和 `agy` CLI 会话从它的本地数据库读取，按 Gemini API 价格算等价值（Antigravity 里用的 Claude 模型按 Claude 价）；OpenCode 显示它自己给每条消息记下的金额。两家都有面板页签、会话列表和报表数据。见[数据从哪里来](#数据从哪里来)。
+- **只读新增的数据**。每次刷新只读会话文件自上次以来追加的字节，并且保留已读过的每一天，所以改统计天数、打开报表都不用重读文件。实测一个 38 MB 的会话文件追加一行，耗时 1–2 ms，整读要 75 ms。启动后的第一次统计仍是全量读。
+- **修复：resume 过的 Claude 会话可能少算**。resume 或 fork 出来的新会话文件会复制一份之前的消息，其中可能有用量被清零的副本；这份副本恰好最后读到时，会顶掉真实的那份——作者本机 30 天少算 $0.24。现在每条消息按最完整的那份计，并归到最早创建的那个会话文件。
+- **修复：Codex 子代理和 fork 出来的会话，多算少算都有**。fork 出来的 rollout——带父会话上下文的子代理、在 Codex Desktop 里 fork 的会话、自动审查代理——开头是一份来源会话历史的副本，这部分在来源那边已经计过费。应用以前把子代理最后一个 `thread_settings_applied` 事件当作副本的结束点；但在 Codex 0.153 及以后，这个事件多半是任务中途切换模型，于是子代理在切换之前自己做的工作被整段丢掉；而 Desktop fork 的会话、以及副本里跟在被复制的设置事件后面的那部分，又被算了第二遍。时间戳和设置事件都标不准副本（有些老版本的 fork 是整份一次写盘的，每一行都是创建时刻），但内容可以：复制来的调用，token 数和来源会话里的某次调用一模一样。现在 fork 出来的 rollout 会和它的来源、以及来源的来源逐条比对；`thread_settings_applied` 只用来确定模型（子代理常常只在这里写模型）。
+- **修复：Codex 会话换到新文件之后的用量没有计入**。从 9 月底起，Codex 会把一个长会话接着写进 `rollout-<时间>-<会话id>_<uuid>.jsonl`。应用以前每个会话只认第一个文件，之后文件里的工作全被漏掉——作者本机最近 7 天约少了 30%。现在一个会话的所有文件都会计入，并且和它之前的文件按内容比对（续写文件有时会重放之前的调用）；会话列表的最后活动时间也取最新的那个文件。加上上一条修复，作者本机 Codex 金额：7 天从 $294 变为 $418，30 天从 $519 变为 $676，90 天从 $3,533 变为 $3,465（7 月 fork 被重复计的部分扣掉了）。
+- **修复：`gpt-6.1-sol` 显示为 $0**。Codex 在上次核对价格后新上了这个型号，现在已按官方价补上。`npm run check-prices` 也会拿新增的 Gemini 价格和 Google 官方价格页比对。
 
 ### v1.5.0
 
@@ -94,8 +105,8 @@
 
 1. 打开 [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest)。
 2. 下载安装包 `AI-Code-Usage-Tray-Setup-*-win-x64.exe` 并运行。安装程序会问装在哪里，默认是当前用户的 `%LOCALAPPDATA%\Programs`（不需要管理员权限；选「所有用户」则需要管理员），创建桌面和开始菜单快捷方式，装完自动启动。卸载在 Windows 设置 → 应用 里进行，`%APPDATA%\ai-code-usage-tray` 下的设置和账号账本会保留。
-3. 单击悬浮条或托盘图标打开完整面板。
-4. 右键悬浮条或托盘图标，可以刷新、开机自启、开关价格表自动更新、切换流光环样式、切换顶部/右侧、隐藏悬浮条、切换全屏时自动隐藏或退出。
+3. 单击悬浮条或托盘图标打开完整面板；面板上的「报表」按钮打开用量报表。
+4. 右键悬浮条或托盘图标，可以打开用量报表、刷新、开机自启、开关价格表自动更新、切换流光环样式、切换顶部/右侧、隐藏悬浮条、切换全屏时自动隐藏或退出。
 
 不想安装？文件名里不带 `Setup` 的 `AI-Code-Usage-Tray-*-win-x64.exe` 是便携版，双击即可运行。它每次启动都会解压到一个新的临时目录，所以启动慢一些，Windows 也可能每次都把它的托盘图标当成新程序。
 
@@ -103,6 +114,29 @@
 
 > [!WARNING]
 > 安装包和便携版目前都还没有 Windows 代码签名，SmartScreen 可能会弹出提醒。请只从本仓库的 Releases 下载，并核对 Release 里的 SHA-256。之后的签名版本会按下面的 [Code signing policy](#code-signing-policy) 发布。
+
+## 用量报表
+
+从托盘菜单「打开用量报表」或面板上的「报表」按钮打开。它是普通窗口，可以调大小、一直开着，和面板一起每 30 秒刷新。
+
+| 部分 | 显示什么 |
+| --- | --- |
+| 筛选 | 范围（今日 / 7 / 30 / 90 天）、图表画金额还是 Token、包含哪些工具。范围和图表选择会记住。 |
+| 指标卡 | 金额、Token、请求、会话和缓存命中率（缓存读 ÷ 全部输入），以及和同样长度的上一周期相比的变化——今日就是比昨天。 |
+| 趋势 | 每天一根柱子，按工具堆叠；今日按小时。悬停看各工具的数字，图下的「表格视图」列出全部数值。 |
+| 按工具 / 按时段 | 每个工具的金额、占比、Token、缓存命中率、请求和会话数；以及一天里几点用得最多。 |
+| 按项目 | 按工作目录把各工具的会话合在一起（`C:\x` 和 `c:/x/` 算同一个项目），Claude Code 的 worktree（`<仓库>\.claude\worktrees\<名字>`）归回所在仓库。 |
+| 最贵的会话 | 标题、项目、客户端、金额、Token、请求数、最后活动时间。子代理的用量、resume 或 fork 复制过去的历史，都算在真正跑它的那个会话上。 |
+| 按模型 | 每个模型的请求、输入、缓存读、输出和金额；没有价格的模型会标出来。 |
+
+合计金额是不同口径直接相加的——Claude、Codex、Antigravity 是 API 等价值，Grok 是官方结算，OpenCode 是它自己记下的金额——报表底部会写明。Token 先换算到同一尺度再加：Codex 和 Grok 的输入里已经含缓存读，另外三家是分开记的。90 天范围不做环比，因为那要读半年的记录。
+
+同一份报表在命令行里也能看，不用启动 Electron：
+
+```powershell
+npm run usage -- --days 30                  # 按工具和按天
+npm run usage -- --days 7 --by project      # 或者 tool、day、hour、model、project、session
+```
 
 ## 数据从哪里来
 
@@ -115,22 +149,29 @@
 | Claude 账户（可选） | Anthropic OAuth 用量接口 | 官方百分比与精确重置时间 |
 | Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | token、额度窗口、模型、会话活动 |
 | Grok CLI | `~/.grok/sessions/**/updates.jsonl` + `~/.grok/logs/unified.jsonl` | 逐轮 token、官方结算金额、订阅周额度、会话活动 |
+| Antigravity（IDE 和 `agy` CLI） | `~/.gemini/antigravity*/conversations/*.db` + `conversation_summaries.db` | 逐轮 token 和模型、标题、工作目录、会话活动 |
+| OpenCode | `~/.local/share/opencode/opencode.db`（设置了 `$XDG_DATA_HOME` 时在其下的 `opencode`） | 逐条消息的 token、模型和 OpenCode 记下的金额、标题、目录 |
 
 Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/` 下的同名数据文件。
 
+Antigravity 和 OpenCode 用的是 SQLite 数据库，应用只读方式打开、而且只在文件有变化时才打开，不会挡住正在写库的工具。Antigravity 的 token 记在 protobuf 记录里，字段号来自 [TokenMe](https://github.com/Bencibr/tokenme)（MIT）的逆向结果，并在这里用真实数据库重新核对过；老的 `antigravity-ide`、`antigravity-backup` 目录里是同一批会话的副本，所以按会话和响应 id 合并，而不是相加。
+
 ### 金额是怎么算的
 
-Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表 [`lib/prices.json`](lib/prices.json)，表上记着最后一次核对的日期，就是面板底部显示的「价格快照」。两家厂商都不提供机器可读的价格，所以表放在本仓库里维护，由应用来下载：启动约 10 秒后和之后每天各一次（失败后每小时重试），从 `raw.githubusercontent.com` 下载，连不上 GitHub 时改用 `cdn.jsdelivr.net`。下载的表必须通过校验（认识的 schema、数值合理、型号一个不少），而且不比手上正在用的旧，才会被采用；否则或者联网失败时，继续用上次下载成功的那份（`%APPDATA%\ai-code-usage-tray\prices.json`）或应用内置的那份。托盘菜单「自动更新价格表」可以关掉下载，已经在用的表保持不变。这张表建模了：
+Claude / Codex / Antigravity 的金额来自一张手工维护的官方标准 API 牌价表 [`lib/prices.json`](lib/prices.json)，表上记着最后一次核对的日期，就是面板底部显示的「价格快照」。三家厂商都不提供机器可读的价格，所以表放在本仓库里维护，由应用来下载：启动约 10 秒后和之后每天各一次（失败后每小时重试），从 `raw.githubusercontent.com` 下载，连不上 GitHub 时改用 `cdn.jsdelivr.net`。下载的表必须通过校验（认识的 schema、数值合理、型号一个不少），而且不比手上正在用的旧，才会被采用；否则或者联网失败时，继续用上次下载成功的那份（`%APPDATA%\ai-code-usage-tray\prices.json`）或应用内置的那份。托盘菜单「自动更新价格表」可以关掉下载，已经在用的表保持不变。这张表建模了：
 
 - 提示缓存：写入 1.25x（5 分钟）/ 2x（1 小时），读取 0.1x——Claude Opus 5.5 为 0.05x，Claude Fable 5.1 / Mythos 5.1 为 0.025x。
 - Opus 5.5 / 5 / 4.8 的快速模式（2x）和 `inference_geo: "us"`（1.1x），逐条从转录里读。
 - Codex 长上下文（输入超过 272K：输入 2x、输出 1.5x）。
+- Gemini 的上下文缓存价，以及 Pro 型号在提示超过 200K 时的长上下文档位。Antigravity 发来的是 `gemini-3.7-flash-control`、`gemini-3-flash-a` 这类实验 id，按最长前缀规则算成对应型号的价；Antigravity 里用的 Claude 模型按 `claude` 一节计价。
 - Bedrock / Vertex 形式的模型 id（`us.anthropic.…`、`名称@日期`），区域配置按官方口径加 10%，`global.` 不加。
 - 退役型号仍保留，旧转录照样能算。
 
-没有公开牌价的型号（比如 Codex 内部的 `codex-auto-review` 标签）会标成「不可用」并排除在合计之外，合计随之标为不完整，而不是猜一个数。
+没有公开牌价的型号（比如 Codex 内部的 `codex-auto-review` 标签，或 Antigravity 的 `gemini-pro-default`——它指的是一个路由，不是具体型号）会标成「不可用」并排除在合计之外，合计随之标为不完整，而不是猜一个数。
 
-`npm run check-prices` 会拿这张表和 Anthropic、OpenAI 自己的价格页比对（每一个价格，外加 Codex 模型页上的每个型号都必须有行），再和 LiteLLM 社区维护的价格表比对，CI 每周跑一次。它只报告不改写，改表的事由人来做。
+Grok 和 OpenCode 不需要价格表：Grok 的金额是 Grok CLI 记下的结算值，OpenCode 的金额是 OpenCode 按它自己的 models.dev 价格给每条消息记下的值——对 API Key 是估算，订阅和本地模型记为 0。
+
+`npm run check-prices` 会拿这张表和 Anthropic、OpenAI、Google 自己的价格页比对（每一个价格，外加 Codex 模型页上的每个型号都必须有行），再和 LiteLLM 社区维护的价格表比对，CI 每周跑一次。它只报告不改写，改表的事由人来做。
 
 #### 更新价格表
 
@@ -140,12 +181,13 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表 [`
 | --- | --- |
 | Claude 价格 | `claude` 一节。一个型号一行，单位是每百万 token 的美元：`"claude-opus-5": { "input": 5, "output": 25 }`。可选字段：`cacheRead`（缓存命中倍率，默认 0.1）、`fast`（快速模式倍率）、`legacy: true`（退役型号，不吃 Bedrock 区域加价）。 |
 | Codex 价格 | `codex` 一节：`"gpt-5.6-sol": { "input": 4, "cachedInput": 0.4, "output": 20 }`。哪些型号该有一行，写在 `lib/codex-usage.js` 顶部的注释里。`codexAliases` 把价格页写明是别名的 id 指到对应的行。 |
+| Gemini 价格（Antigravity） | `gemini` 一节：`"gemini-3.8-flash": { "input": 0.75, "cachedInput": 0.075, "output": 3.75 }`。可选的 `longContext: { "above": 200000, "input": 4, "cachedInput": 0.4, "output": 18 }`：一次调用的提示（输入加缓存读）超过 `above` 时，三项价格整体换成这一档。1.6.0 之前的版本会忽略这一节。 |
 | 快照日期 | `snapshot`。面板底部显示的就是它。 |
 
 行的 key 是**不带日期后缀**的模型 id（写 `claude-opus-5`，不写 `claude-opus-5-20260514`）。`priceFor` 按前缀匹配、最长的 key 胜出，所以 `claude-opus-4` 和 `claude-opus-4-5` 可以共存。如果新型号只是某个已有 key 的更长兄弟（比如 `gpt-5.5` 旁边出了 `gpt-5.5-pro`），必须单独加一行，否则它会静默按短 key 的价算——`npm run check-prices` 会以 `unlisted id` 一行报出来。
 
-1. `npm run check-prices`——每处差异一行：`official  型号  字段  表里的值 → 官方的值`；LiteLLM 的差异行开头是 `claude` 或 `codex`。两家厂商都会拒绝部分地区，而 Node 的 `fetch` 不走系统代理；在代理后面跑的话用 `NODE_USE_ENV_PROXY=1 npm run check-prices`（Node 24+，读 `HTTPS_PROXY`）。
-2. `official` 开头的行直接来自厂商页面。LiteLLM 的行也要到官方页确认：[Anthropic 价格](https://platform.claude.com/docs/en/about-claude/pricing)、[OpenAI 价格](https://developers.openai.com/api/docs/pricing)。LiteLLM 是社区数据，偶尔自相矛盾。
+1. `npm run check-prices`——每处差异一行：`official  型号  字段  表里的值 → 官方的值`；LiteLLM 的差异行开头是 `claude`、`codex` 或 `gemini`。`notes` 里关于「定期调价」的行（Gemini 3.6–3.8 Flash 在 2027-01-01 涨价）是提醒你到那天去改对应的行：价格表本身不带日期。两家厂商都会拒绝部分地区，而 Node 的 `fetch` 不走系统代理；在代理后面跑的话用 `NODE_USE_ENV_PROXY=1 npm run check-prices`（Node 24+，读 `HTTPS_PROXY`）。
+2. `official` 开头的行直接来自厂商页面。LiteLLM 的行也要到官方页确认：[Anthropic 价格](https://platform.claude.com/docs/en/about-claude/pricing)、[OpenAI 价格](https://developers.openai.com/api/docs/pricing)、[Gemini API 价格](https://ai.google.dev/gemini-api/docs/pricing)。LiteLLM 是社区数据，偶尔自相矛盾。
 3. 改对应的行，把 `snapshot` 改成当天日期，跑 `npm test`，提交并推到 `main`。
 
 已安装的应用都依赖这个文件，所以有四条规矩：
@@ -222,6 +264,7 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表 [`
 ## 隐私与安全
 
 - 不上传 transcript、提示词、项目路径或会话标题。
+- Antigravity 和 OpenCode 的数据库只以只读方式打开，不会在旁边写任何东西。
 - 除了可选的 Claude 账户（会向 Anthropic 查询额度），唯一的自动联网请求是从本仓库下载公开的价格表（`lib/prices.json`），启动时和之后每天各一次（失败后每小时重试）。它不发送任何关于你的信息，服务器看到的只是一次普通下载。托盘菜单「自动更新价格表」可以关掉。
 - 不读浏览器 Cookie，也不需要 Anthropic / OpenAI / xAI API Key。
 - 本地文件损坏、被锁或权限不够时，会留下上一份快照，并标成过期。
@@ -239,7 +282,7 @@ Claude / Codex 的金额来自一张手工维护的官方标准 API 牌价表 [`
 
 ## 本地开发
 
-需要 **Windows 10/11、Node.js 22+ 和 npm**：
+需要 **Windows 10/11、Node.js 24+ 和 npm**（Electron 43 内置的就是 24；测试通过 Node 自带的 `node:sqlite` 打开 SQLite）：
 
 ```powershell
 git clone https://github.com/saime428/ai-code-usage-tray.git
@@ -247,7 +290,7 @@ cd ai-code-usage-tray
 npm ci
 npm test
 npm start
-npm run usage   # 终端打印今日用量，不启动 Electron
+npm run usage   # 终端打印今日用量，不启动 Electron（加 -- --days 30 看报表）
 npm run check-prices   # 把价格表和厂商官方页、LiteLLM 比对
 ```
 
@@ -266,12 +309,18 @@ main.js                 Electron 主进程、托盘、窗口与刷新调度
 preload.js              受限 IPC bridge
 lib/usage.js            Claude 本地用量与会话解析
 lib/codex-usage.js      Codex 本地用量与额度解析
-lib/prices.json         Claude / Codex 价格表（应用也会从 main 下载它）
-lib/prices.js           价格表校验，以及下载它的地址
 lib/grok-usage.js       Grok 本地用量、官方金额与周额度解析
+lib/antigravity-usage.js  Antigravity 会话数据库（protobuf 解码）与 Gemini 计价
+lib/opencode-usage.js   OpenCode 的 SQLite 数据库
+lib/jsonl.js            从上次读到的位置接着读的逐行读取器
+lib/report.js           共用的按小时数据行、面板汇总和跨工具报表
+lib/usage-worker.js     在主进程之外跑以上所有统计的 worker 线程
+lib/prices.json         Claude / Codex / Gemini 价格表（应用也会从 main 下载它）
+lib/prices.js           价格表校验，以及下载它的地址
 lib/claude-oauth.js     可选 Claude OAuth / PKCE
 lib/hang-guard.js       挂起记录看门狗与未响应实例查找
 renderer/index.html     完整面板
+renderer/report.html    用量报表窗口
 lib/activity.js         流光环的活动监听（会话目录写入 + hook 状态）
 renderer/floating.html  贴边悬浮条
 hooks/                   可选 Claude Code 状态 hooks
@@ -300,6 +349,9 @@ git status --short
 - Bedrock 对退役型号的另一套定价没有建模。
 - Codex 的快速模式（`service_tier: "priority"`，官方价为标准价的 2x，gpt-5.5 为 2.5x）没有建模，这些回合按标准价显示。
 - 没有公开牌价的型号（如 `codex-auto-review`）会被排除在合计之外并标出，不做估算。
+- Antigravity 和 OpenCode 没有额度显示、点击跳转和分账号统计。悬浮条、流光环和托盘提示只覆盖有额度窗口的 Claude、Codex、Grok。
+- Antigravity 的每一轮按它自己的时间戳定日期；新版本不再写这个时间戳，就用对应 step 的时间；两者都没有时退回到会话开始时间。目前核对过的数据库里还没出现过这种情况。
+- 启动后的第一次统计、以及第一次打开较长范围的报表，仍要把范围内的文件各读一遍（作者 30 天的记录约 3 秒）；之后才是增量读取。读过的结果不落盘。
 
 ## 贡献
 
@@ -318,5 +370,5 @@ npm test
 ---
 
 <p align="center">
-  Not affiliated with or endorsed by Anthropic, OpenAI, or xAI.
+  Not affiliated with or endorsed by Anthropic, OpenAI, xAI, Google, or the OpenCode project.
 </p>

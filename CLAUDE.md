@@ -1,6 +1,6 @@
 # AI Code Usage Tray — 项目上下文
 
-Windows 系统托盘工具:实时显示 Claude Code 与 Codex Desktop/CLI 的今日 token 用量、额度和活跃会话。这个生态位的现有产品(usage、Agent Island、Paste It 等)几乎都是 macOS 优先,**Windows 是空位**——而作者自己每天在 Windows 上使用这些工具,吃自己的狗粮。
+Windows 系统托盘工具:实时显示 Claude Code / Desktop、Codex Desktop/CLI、Grok CLI、Antigravity、OpenCode 的 token 用量、额度和活跃会话,外加跨工具的用量报表窗口。这个生态位的现有产品(usage、Agent Island、Paste It 等)几乎都是 macOS 优先,**Windows 曾经是空位**(2026-10 起有了竞品 TokenMe,见下)——而作者自己每天在 Windows 上使用这些工具,吃自己的狗粮。
 
 ## 为什么做这个(2026-07 决策记录)
 
@@ -8,6 +8,7 @@ Windows 系统托盘工具:实时显示 Claude Code 与 Codex Desktop/CLI 的今
 - AI coding 周边工具是 2026 年新爆点(Claude Code/Codex/Cursor 相关条目 21 处,几乎全在 2026 年)。
 - 参照:[usage](https://github.com/aqua5230/usage)(菜单栏额度,macOS)、[Agent Island](https://agent-island.dev/)(会话状态提醒)。
 - 分发策略:GitHub 开源 + 给 chinese-independent-developer 提 PR + 即刻/V2EX/X 发帖。开源仓库本身就是获客渠道。
+- **2026-10-04 出现直接竞品 [TokenMe](https://github.com/Bencibr/tokenme)**(Rust + Tauri,macOS + Windows + CLI,20 款工具,SQLite 增量索引,models.dev 计价,MIT;当时 4 star、单个 squash 提交、多数适配器 Windows 未实机验证)。「Windows 是空位」不再完全成立。差异化:Windows 原生打磨(卡死自救、全屏隐藏、开机自启)、会话状态/通知/悬浮条、计价精度(1h 缓存写、fast、区域加价、Codex 272K——TokenMe 都没建模)。从它借鉴了:Antigravity 的 protobuf 字段号、跨工具报表、增量读取的做法。两家都还没进 chinese-independent-developer 列表。
 
 ## 数据源(核心知识)
 
@@ -15,14 +16,28 @@ Claude Code 把每个会话的转录写在 `~/.claude/projects/<目录名>/<sess
 - 每行一个 JSON。`type: "assistant"` 的行带 `message.model`、`message.usage`、`timestamp`(UTC ISO)、`cwd`。
 - `usage` 字段:`input_tokens`、`output_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`。
 - 流式输出会用同一个 `message.id` 重写多行,**必须按 id 去重取最后一条**(lib/usage.js 已处理)。
+- **resume/fork 会把历史消息连 id 一起复制进新文件**:本机 90 天里 43% 的 message id 出现在两个文件里,而且复制品可能用量全 0(2026-10-04 发现两例,`out 0, cr 0`)。旧的「最后读到的文件赢」碰上零值副本就少算(本机 30 天 $0.24)。现在消息归**最早创建(birthtime)的那个文件**的会话,数值取**最大的那份**。嵌套的 `<session>/subagents/agent-*.jsonl` 记到父会话目录名下。
 - 定价表在 `lib/prices.json`(官方标准 API 价快照,核对日期见其中的 `snapshot`;5 分钟 cache 写 1.25x、1 小时写 2x、cache 读默认 0.1x),应用运行时还会从 GitHub main 下载同一个文件,见下面「已知取舍」的价格表一条。订阅用户不按 token 计费,所以 UI 上标注为「等价 API 价值」。
 - Codex Desktop 与 CLI 都把会话写在 `~/.codex/sessions/**/*.jsonl`;`turn_context` 给出模型,`token_count` 给出累计 token 和真实额度窗口。`lib/codex-usage.js` 按相邻累计值做差,同时覆盖两种客户端,并按 OpenAI 官方 API 价格计算等价价值。
 - Claude Desktop 会话元数据位于 `%APPDATA%/Claude/claude-code-sessions/**/*.json`;用 `cliSessionId` 关联 transcript,并通过 `claude://resume?session=<cliSessionId>` 直接打开对应会话。
+- **Codex 的「副本」**:fork 出来的 rollout——带父上下文的子代理(meta 有 `forked_from_id`)、Codex Desktop 里 fork 的会话、自动审查代理复制的整段历史(`compacted` + 「The following is the Codex agent history」)——开头是来源会话历史的副本,那部分在来源里已经计过费。**唯一可靠的识别方法是内容**:复制来的调用,`(input, cached, output, reasoning)` 四元组和来源里的某次调用完全相同。`lib/codex-usage.js` 对子代理和带 `forked_from_id` 的 rollout 不当场计费,先把调用存成 `calls`,读完全部文件后按 `forked_from_id` / `parent_thread_id` **沿来源链**(来源本身也是 fork 就继续往上)比对,来源里有的跳过,其余计费;来源不在统计范围内就按需读一次(文件名里带会话 id),来源已不在磁盘则全计(副本是唯一记录)。轮次:这类 rollout 的一轮在它第一次真正计费时才算。普通会话照旧当场计费。常规刷新 25–31ms,不受影响。
+  走到这一步绕了四圈,都是 Fable 审查逼出来的,值得记住:① 旧规则(07-28 起)是「子代理遇到 `thread_settings_applied` 就清空」,按 7 月的 Codex 写的,当时 fork 确实会复制;但 **Codex 0.153+ 的这个事件多半是任务中途切模型**,切之前子代理自己的工作被整段丢掉(一个文件 108 次调用全丢);7 月的副本里还夹着被复制过来的设置事件,最后一个之后的副本照样被计;Desktop fork 从来没处理过。② 第二轮审查说「清空规则错了、永远别清空」——它的依据(时间都晚于 meta、逐字找不到父会话的行)被副本改写过的时间戳骗了,照做会把 7 月的副本重复计;**按数值比对**才看清:7 月 2520 条标记前事件里 2318 条和父会话一模一样,9 月 597 条里只有 2 条。③ 我随后改成「`session_meta` 后 500ms 内的算副本」,第三轮审查指出 ≤0.148 的部分 fork **整份是结束时一次写盘的,226 行全是创建时刻**(连子代理自己的 31 次调用也是),时间窗把它们当副本丢了(90 天约 $119);Desktop fork 的副本写入也慢到 329ms。所以最后只认内容。直接来源比对后还剩 71 个数值在 fork 和普通会话里各计一次——fork 的 fork 复制了祖父会话的调用、而父文件里没有——沿来源链比对后归零。教训:**判断副本只看数值,不看时间、不看原文、不看设置事件**;每次改完都用独立脚本统计「同一数值被计了几次」。
+  ④ 第四轮审查发现更大的漏算:**2026-09-30 起 Codex 把同一线程续写进 `rollout-<时间>-<线程id>_<uuid>.jsonl`**,每个续写文件有自己的 `session_meta`(id 和基础文件相同)、自己的 `turn_context`。旧代码按 `session_meta.id` 去重、每个线程只留第一个文件,续写文件里的工作全丢——本机 5 个线程 14 个续写文件、903 次调用,7 天少算约 30%。审查建议「每个文件都计」,但**续写文件之间会按真实节奏重放之前的调用**(创建后 9–48 秒,`01a1053b` 有一个续写文件 6 次调用全是之前文件里的;之前以为来源不明的「几个普通会话里 49 条相同数值」就是这个),所以现在按线程分组、按文件名时间排序,基础文件照常计费,续写文件当作 fork:只计「本线程更早的文件和来源链里都没有」的调用;同一文件在 sessions/ 和 archived/ 都有时按文件名去重;会话列表的最后活动取整个线程的最新。`ROLLOUT_NAME` 抓的是 `-<线程id>(_<uuid>)?.jsonl`,注意别抓成最后一个 uuid(续写后缀)。
+  验证口径:独立脚本按同样规则重算「同一数值被计了几次」,跨文件重复只剩 1 个跨线程的偶然撞值;同一文件内数值相同的大多是累计值没变的重复快照(代码本来就跳过),累计值确实前进了的 294 对是两次相同用量的独立调用。最终本机 Codex:7 天 $294 → $418,30 天 $519 → $676,90 天 $3,533 → $3,465;常规刷新 24–36ms。
+  **模型只写在 `thread_settings_applied` 的 `payload.thread_settings.model` 里,之后常常不再有 `turn_context`**(本机 18 个子代理文件、655 次 token_count 如此;有 `turn_context` 跟着的 288 次模型全部一致),所以这个事件现在只用来设模型。子代理的用量按 `parent_thread_id` 记到父会话。
+  `gpt-reserve`、`codex-auto-review` 在官方价格页和 Codex 模型页上都没有,保持「不可用」。
+- **token 口径各家不同**(`lib/report.js` 的 `PROVIDERS.inputIncludesCache`,实测):Codex 的 `input_tokens` 含 `cached_input_tokens`;Grok 的 `inputTokens` 含 `cachedReadTokens`(`totalTokens = input + output`);Claude、Antigravity(#4.2 是未命中缓存的部分)、OpenCode(`total = input + output + cache.read + cache.write`)缓存是分开记的。reasoning 在有它的几家都是 output 的一部分。面板按各家原口径显示,报表先换算到同一尺度再加。
+- Antigravity(Google 的 agent IDE 和 `agy` CLI)把会话存在 `~/.gemini/<root>/conversations/<会话id>.db`(SQLite,WAL),root 有 `antigravity-cli`、`antigravity`、`antigravity-ide`、`antigravity-backup` 四个——**后两个是同一批会话的副本**(本机 backup 和 antigravity 目录 27 个文件全重合),所以按「会话 id + responseId」逐阶段取最大值合并,不能相加;本机原始 817 条去重后 689 条。token 在 `gen_metadata.data` 的 protobuf 里(字段号见 `lib/antigravity-usage.js` 文件头,来自 TokenMe 的逆向,本机核对过);新版 agy 不再在记录里写时间戳,用 `steps`(step_type 15)按 responseId 补,本机 689 条全部能定上时间。标题和工作目录在每个 root 的 `conversation_summaries.db`(`preview` 列,`title` 常为空)。模型 id 是内部名:`gemini-3.7-flash-control`、`gemini-3.8-flash-n`、`gemini-3-flash-a` 这类实验后缀按最长前缀归到正式型号;`gemini-pro-default` 是路由标签,**故意不定价**;`claude-opus-4-6-thinking` 走 Claude 价格表。Antigravity 自己不记金额,按 `lib/prices.json` 的 `gemini` 一节算 API 等价值。
+- OpenCode 在 `$XDG_DATA_HOME/opencode/opencode.db`(Windows 上也是 `~/.local/share/opencode/opencode.db`)。`message.data` 是 JSON,assistant 消息带 `modelID`、`providerID`、`time.created`、`tokens`、`cost`;金额直接用 OpenCode 记的 `cost`(它按 models.dev 算,订阅和本地模型为 0)。子会话(`session.parent_id`)记到顶层会话。按 `time_updated >= 上次最大值` 增量读;读完后「见过的 message id 数」和 `count(*)` 对不上就整表重读——第一版只在行数变少时重读,Fable 审查指出「同一轮里删一条又加一条」(行数不变)和「导入一条 time_updated 更早的行」都会一直算错到重启。
+- 两个 SQLite 来源都用 Node 自带的 `node:sqlite` 只读打开(Electron 43 = Node 24.18,不打警告;Node 25 会打 `ExperimentalWarning`,npm 脚本里用 `--disable-warning=ExperimentalWarning` 关掉),只在库文件或 `-wal` 的大小/mtime 变了才重开。CI 的 Node 因此对齐到 24。
 - Grok CLI 把会话写在 `~/.grok/sessions/<url编码cwd>/<会话id>/`:`updates.jsonl` 的 `turn_completed` 事件带**逐轮** token(`modelUsage` 按模型细分)和官方结算费用 `costUsdTicks`(1 USD = 10^10 ticks,含缓存折扣,不需要本地价格表);`summary.json` 带标题/模型/cwd/活动时间。`~/.grok/logs/unified.jsonl` 里 CLI 自己记录 `billing: fetched credits config`,含订阅周额度百分比、周期起止和套餐名。**`creditUsagePercent` 为 0 时该字段整个不出现**(proto3 丢默认值),所以字段缺失要当 0 读,不能当"未知"隐藏——本机 122 条记录里它从来不是字面 0,而 17 次缺失全落在计费周期头几天。2026-09-09 新周期开始时额度整块消失就是这个原因。这份额度正是 2026-08-17 调研文档认为"没有公开 API"的 SuperGrok 周额度,CLI 落了本地盘就能直接读。
 
 ## 架构
 
-- `lib/usage.js` / `lib/codex-usage.js` / `lib/grok-usage.js` — 纯 Node 数据层,无 Electron 依赖,分别返回今日按模型聚合 + 24h 会话列表。
+- `lib/usage.js` / `lib/codex-usage.js` / `lib/grok-usage.js` / `lib/antigravity-usage.js` / `lib/opencode-usage.js` — 纯 Node 数据层,无 Electron 依赖。每家返回面板要的按模型/按天汇总 + 24h 会话列表,外加 `rows`(按「会话 × 本地整点小时 × 模型」的桶)和 `sessionMeta`,供报表用;worker 把这两样留在自己这边,不传给主进程。
+- `lib/jsonl.js` — `readAppended` 是增量读取的核心:按字节偏移续读、只吃完整的行(末尾半行能 `JSON.parse` 才算写完),偏移点前 64 字节对不上(文件被原地改写)或文件变短就整读;解析中途抛错就丢掉这个缓存条目,避免半截状态被重复计数。解析状态保留**所有日期**,所以改统计天数、开报表都不用重读。Codex 的状态里金额是解析时算好的(272K 档按单次调用判定,桶里没法事后重算),状态带 `priceKey`,价格表一换就整读一次。
+- `lib/report.js` — 共用的 `rowCollector` / `summarizeRows`(面板汇总)和 `buildReport`(跨工具报表:上一周期对比、按天/按小时、模型、项目、会话)。项目按 cwd 归一(Windows 下忽略大小写和斜杠),`<仓库>/.claude/worktrees/<名字>` 归回仓库。
+- `renderer/report.html` — 报表窗口(普通窗口,关掉即销毁)。主进程每 30 秒推 `usage-updated` 时它顺带重拉一次报表;对比上一周期只在两段都落在 90 天内(≤45 天)时做,90 天报表不读半年的历史。
 - `main.js` — Electron 主进程:托盘图标、原生注意提醒、完整面板、顶部/右侧悬浮条、共享 30s 快照、安全桌面深链和 Claude OAuth 加密存储。
 - `lib/claude-oauth.js` — Claude 浏览器 PKCE 授权（固定网页回调 + 手动粘贴登录码）、令牌刷新和官方额度响应解析；令牌本身由主进程通过 Electron `safeStorage` 保存。
 - `lib/auto-launch.js` — 开机自启条目的纯判断:解析 `reg query` 输出里的 exe 路径、判断便携版该不该让出已有条目。
@@ -34,8 +49,9 @@ Claude Code 把每个会话的转录写在 `~/.claude/projects/<目录名>/<sess
 ## 命令
 
 ```bash
-npm test          # lib/usage.js 单元测试(node --test)
+npm test          # lib/*.test.js 单元测试(node --test)
 npm run usage     # 命令行打印今日用量(不启动 Electron,最快的验证方式)
+npm run usage -- --days 30 --by project   # 报表:--by tool|day|hour|model|project|session
 npm start         # 启动托盘应用
 npm run dist      # 测试后生成 Windows x64 一键安装包(Setup)和便携版到 dist/
 ```
@@ -53,8 +69,11 @@ npm run dist      # 测试后生成 Windows x64 一键安装包(Setup)和便携�
 - [x] **打包准备**:electron-builder 生成带自定义图标的 Windows x64 一键安装包(按用户安装,主推)和便携版;README.md 为英文主页,README.zh-CN.md 为中文版,顶部互挂切换链接。
 - [x] **公开发布**:MIT + GitHub 公开仓库 + v1.0.0 Release 已完成；后续再做干净 Windows 验证和社区收录。
 - [x] **价格表在线更新**(1.5.0):改价推 `lib/prices.json` 到 main,已安装的应用一天内用上,不用发版;托盘「自动更新价格表」可关。
+- [x] **Antigravity / OpenCode 支持**(1.6.0):面板页签(本机有数据才出现)、会话列表、报表;不进悬浮条和托盘提示(没有额度窗口)。
+- [x] **用量报表**(1.6.0):跨工具的独立窗口 + `npm run usage -- --days/--by`。
+- [x] **增量读取**(1.6.0):按字节偏移只读追加部分。实测 38MB 转录追加一行 1–2ms(整读 75ms);常规刷新本来就跳过没变的文件(约 130ms),省下的是活跃会话每 30 秒的整读。
 - [ ] 自动更新:首个 GitHub Release 稳定后接入版本检查与下载安装。
-- [ ] 增量读取:按文件记 byte offset,只读新增部分(目前每 30s 全量重读,转录很大时再做)。
+- [ ] 落盘索引:启动后第一次统计仍要整读(本机 30 天 3.2 秒 / 0.9GB,90 天 6.7 秒 / 2.1GB,在 worker 里)。真嫌慢再把解析状态存到 userData,要处理版本升级、损坏和换价格表后重算。
 
 ## 已知取舍(ponytail 标记在代码里)
 
@@ -75,6 +94,7 @@ npm run dist      # 测试后生成 Windows x64 一键安装包(Setup)和便携�
   Claude 以前有的 >200K 长上下文档位(Sonnet 4.5/4 的 1M beta,2x/1.5x)已经取消:2026-09 官方文档里 Sonnet 4.5 只有 200K 窗口、价格页也不再列这一档,只有 LiteLLM 还留着,所以既不建模、checker 也不再提示(2026-09-27 删掉了那条"unmodeled"提示和 README 里对应的限制)。Codex 的 272K 档位**是**建模了的。
   真实转录里 checker 覆盖不到的:`<synthetic>` token 全 0(已被现有零值判断跳过)、Codex 的 `codex-auto-review` 和 `gpt-5.3-codex-spark` 上游无 API 价。注意 `opus`/`fable` 这类裸别名只出现在 Task 工具调用参数里,**不是** `message.model`——查的时候别用整行 grep `"model":"..."`,会把嵌套参数一起捞进来。
 - **`npm start` 有个能吞掉一整天的坑**:Electron 启动时若发现 `node_modules/electron/dist/resources/app.asar`,会直接运行它并**忽略 `.` 参数**——正常安装那里只有 `default_app.asar`。2026-07-28 某次打包把 v1.0.1 的 `app.asar`(和 `elevate.exe`)写进了那个目录,之后每次 `npm start` 跑的都是 v1.0.1 而不是工作区,直到 2026-09-06 才因为「改了价格但面板没变、Grok 和天数框都不见了」被发现。`package.json` 的 `prestart` 现在会检查这个文件并拒绝启动;确认 dev 跑的是工作区,看渲染进程命令行里的 `--app-path` 是不是仓库目录。同理:**用 `npm start` 验证过的结论,都要先确认 app-path**,否则冒烟测试可能只是撞了单实例锁退出。
+  **开发版和安装版的 `app.name` 都是 `ai-code-usage-tray`**(electron-builder 的 `productName` 在 `build` 里,运行时读不到),所以共用 `%APPDATA%\ai-code-usage-tray` 和同一把单实例锁:安装版在跑时 `npm start` 会静默退出,还会把安装版的面板弹出来(2026-10-04 实测)。验证开发版要加 `--user-data-dir=<临时目录>`:`electron . --remote-debugging-port=9333 --user-data-dir=...`,顺带不会碰到已连接 Claude 账户的实例(反复重启那个会触发限流)。之后用 CDP(`/json/list` + `Runtime.evaluate` / `Page.captureScreenshot`)操作面板和报表窗口、截图核对。
 - **2026-09-14 卡死排查**(也是改分发方式的原因):
   - 用户以为"开机不自启、快捷方式卡住",实际是开机自启成功、应用夜里**跨进程挂起**(WER `AppHangXProcB1`,报告在 `C:\ProgramData\Microsoft\Windows\WER\ReportArchive\AppHang_AI Code Usage Tr_*`,可靠性监视器里只有这一次)。卡死进程里唯一的第三方模块是微信输入法的 TIP `wetype_tip_core.dll`,当晚 WeType 的更新进程和渲染进程都重启过——高度可疑但**未证实**,WER 的阻塞方签名解不出。挂起记录就是为了下次拿证据:`step` 为 `idle` 且卡住前刚有输入法进程启动,即可确认。排查时的教训:Schannel 36871 不是本应用的启动指纹,是 WeType 等进程联网的背景噪音;`Get-Process` 的 `.Modules` 对卡死进程可能返回空。
   - 卡死后怎么打开都没用:卡死的主实例占着单实例锁,Electron 把新实例转交给它无响应的窗口,**不会杀掉它**,新实例静默退出。`main.js` 的 `endHungInstances` 在抢锁前用 `tasklist /FI "STATUS eq NOT RESPONDING"` 找同名进程并结束(仅打包版)。**不加 `/T`**:实测主进程一没,渲染/GPU 子进程和 fullscreen-watch 的 PowerShell 五秒内全部自行退出,而 `shell.openExternal` 打开的浏览器和 Claude Desktop 也挂在这棵树上,连坐会关掉用户正开着的窗口。杀完等 500ms 再抢锁,因为 taskkill 返回时锁可能还没释放。**抢不到锁的实例必须立刻 `return`**:否则它照样往下起看门狗 worker,而 worker 开头的日志轮转会把运行中实例的 `hang-log.jsonl` 改名。
@@ -90,4 +110,7 @@ npm run dist      # 测试后生成 Windows x64 一键安装包(Setup)和便携�
 - 换流光环样式时多半没人在跑,环是灭的,用户会以为菜单没生效(2026-09-21 就这么报了一次)。`applyState` 发现样式真的变了就把三个环点亮两秒当预览;首次加载不触发,否则每次 hover 发 `floating-state` 都要闪一下。
 - 没有 hook 的会话(以及 Codex、Grok)只能按「最近 20 秒写过盘」判断在不在跑(`WRITE_ACTIVE_MS`):长时间思考不落盘时环会闪,任务结束后多亮最多 20 秒。要精确熄灭就得在 watch 事件里读改动文件的尾行——Grok 有 `turn_completed`、Codex 有 `token_count`,都是现成的回合结束标记。hook 说 working 但 15 分钟没有新写入也会熄灭,因为崩溃的会话不会补 Stop。
 - 托盘图标和主面板的会话列表仍然只跟 30s 快照,没接快车道:16px 的图标和要展开才看的列表不值得为延迟多一条链路。
+- 面板 380px 宽:内容溢出出现滚动条时只剩 365px,五个页签按原来 9px 间距会把 OpenCode 挤到第二行、再加高 24px(2026-10-04 实测)。现在 6px 间距,有滚动条也排一行。面板在「未连接账户卡片 + 账号用量 + 三行警告」同时出现时本来就会溢出(旧版 663px),这次改版后是 607px。
+- 报表的行按本地整点小时分桶,所以面板和报表的范围截止在「当前小时」而不是精确到秒;旧代码对 Claude 精确截止、对 Codex 根本不截止 `now` 之后的数据,两者在实际运行(`now` = 当前时刻)时结果一致,只有把 `now` 钉在过去做对照时才看得出差别。新旧实现用本机真实数据在 1/30/90 天上逐项对过,除了上面修掉的零值副本以外完全一致。
+- 新增工具时要动的地方:`lib/report.js` 的 `PROVIDERS`(口径)、`lib/usage-worker.js` 的 `COLLECTORS`、`renderer/index.html` 的 `providerInfo` 和页签、`renderer/report.html` 的 `PROVIDERS` 和颜色(颜色用 dataviz 的校验脚本按堆叠顺序验过,别随手换)、`scripts/print-usage.js`(自动跟随 `PROVIDERS`),以及 README 两份的数据来源表。
 - 用 Electron 而不是 Tauri:纯 JS 栈好维护,体积大但这是开发者工具,无所谓。

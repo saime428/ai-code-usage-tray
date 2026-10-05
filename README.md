@@ -5,7 +5,7 @@
 <h1 align="center">AI Code Usage Tray</h1>
 
 <p align="center">
-  A local-first Windows tray monitor for the usage, quotas, accounts and session activity of Claude Code / Desktop, Codex CLI / Desktop, and Grok CLI.
+  A local-first Windows tray monitor for the usage, quotas, accounts and session activity of Claude Code / Desktop, Codex CLI / Desktop, Grok CLI, Antigravity and OpenCode — with a usage report across all of them.
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 </p>
 
 > [!NOTE]
-> For Claude and Codex, the cost shown is an **API-equivalent value** computed from official standard API prices (the price table updates itself from this repository; its date is shown at the bottom of the panel) — a way to compare burn rates. Subscriptions are not billed by this amount. Grok's cost comes from the official billed value recorded by Grok CLI; within your subscription quota it does not cost extra either.
+> For Claude, Codex and Antigravity, the cost shown is an **API-equivalent value** computed from official standard API prices (the price table updates itself from this repository; its date is shown at the bottom of the panel) — a way to compare burn rates. Subscriptions are not billed by this amount. Grok's cost comes from the official billed value recorded by Grok CLI; within your subscription quota it does not cost extra either. OpenCode's is the value OpenCode itself recorded for each message.
 >
 > Regular Claude Desktop Home chats only leave session metadata and quota percentages on disk, with no token detail, so no cost can be computed for them. Cost only covers Claude Code / Cowork sessions that have a local transcript. Connecting a Claude account improves quota and reset accuracy but cannot fill in Home-chat tokens.
 
@@ -31,7 +31,8 @@
 
 | | |
 | --- | --- |
-| **Claude + Codex + Grok in one place** | Claude Code, Claude Desktop, Codex CLI/Desktop and Grok CLI share one panel. |
+| **Five tools in one place** | Claude Code, Claude Desktop, Codex CLI/Desktop, Grok CLI, Antigravity (IDE and CLI) and OpenCode share one panel. Antigravity and OpenCode tabs appear once their data exists on this machine. |
+| **Usage report** | A resizable report window across every tool: daily trend, hour of day, per tool, per project, the costliest sessions and per model, against the previous period. Also on the command line. |
 | **Independent date ranges** | Each provider gets its own 1–90 day range. |
 | **Quota windows** | 5h / 7d usage percentages, reset times and data freshness. With a Claude account connected, the Fable window appears when available. |
 | **Per-account usage** | Once enabled on this machine, tokens accumulate under the current account; older records stay out. The ledger is encrypted locally by Windows. |
@@ -43,6 +44,16 @@
 | **Zero API keys** | Local mode needs no API key. Claude OAuth is optional, for more accurate quotas. |
 
 ## What's new
+
+### v1.6.0
+
+- **Usage report.** Tray menu → 打开用量报表, or the 报表 button on the panel, opens a report window covering every tool at once: amount, tokens, requests, sessions and cache hit rate against the previous period; a daily trend stacked by tool (by hour for today); hour of day; per tool; per project, merging the tools that worked in the same directory and folding Claude Code worktrees into their repository; the costliest sessions, with subagents and resumed history credited back to the session that ran them; and per model. Filter by tool, switch the charts between amount and tokens. See [Usage report](#usage-report).
+- **Antigravity and OpenCode.** Antigravity's IDE and `agy` CLI conversations are read from their local databases and valued at Gemini API prices (Claude models inside Antigravity at Claude prices); OpenCode shows the amount it recorded per message. Both get a panel tab, sessions and report rows. See [Where the data comes from](#where-the-data-comes-from).
+- **Only new data is read.** Each refresh reads just the bytes appended to a session file since the last one, and keeps every day it has read, so changing a range or opening the report does not read files again. Measured on a 38 MB transcript: one appended line takes 1–2 ms instead of a 75 ms full read. The first read after launch is still a full one.
+- **Fixed: resumed Claude sessions could undercount.** A resumed or forked transcript can carry a copy of earlier messages with the usage zeroed, and when that copy was read last it replaced the real one — $0.24 over 30 days on the author's machine. Each message now counts at its full size and belongs to the transcript created first.
+- **Fixed: Codex subagents and forked conversations were counted wrong, both ways.** A forked rollout — a subagent forked with its parent's context, a conversation forked in Codex Desktop, an auto-review agent — starts with a copy of history already billed where it came from. The app used to take the subagent's last `thread_settings_applied` event as the end of that copy; in Codex 0.153 and later that event is usually a mid-task model switch, so the subagent's own work before it was dropped, while copies in Desktop forks, or past a copied settings event, were billed a second time. Neither timestamps nor settings events mark a copy reliably (some older forks were written in one go, every line stamped with the creation time), but its content does: a copied call has exactly the token counts of a call in the rollout it came from. Calls in forked rollouts are now matched against their source, and the source's sources; `thread_settings_applied` only sets the model, which subagents often name nowhere else.
+- **Fixed: Codex work after a thread moved to a new file was missing.** Since late September Codex continues a long thread in `rollout-<time>-<thread id>_<uuid>.jsonl`. The app kept only the first file of each thread, so everything written to the later ones was left out — on the author's machine about 30% of the last 7 days. All of a thread's files now count, checked by content against the earlier ones, because a continuation sometimes replays calls from before; the session list also takes its last activity from the newest file. Together with the fix above, the Codex amount on the author's machine goes from $294 to $418 over 7 days, $519 to $676 over 30 days, and $3,533 to $3,465 over 90 days (July's double-counted forks come out).
+- **Fixed: `gpt-6.1-sol` showed as $0.** Codex added it after the last price check; it now has its official row. `npm run check-prices` also checks the new Gemini rows against Google's pricing page.
 
 ### v1.5.0
 
@@ -95,8 +106,8 @@ Older versions are listed under [Releases](https://github.com/saime428/ai-code-u
 
 1. Open [GitHub Releases](https://github.com/saime428/ai-code-usage-tray/releases/latest).
 2. Download the installer `AI-Code-Usage-Tray-Setup-*-win-x64.exe` and run it. It asks where to install, defaulting to the current user under `%LOCALAPPDATA%\Programs` (no admin rights; choosing all users needs them). It adds desktop and Start menu shortcuts and starts the app. Uninstall it from Windows Settings → Apps; settings and the account ledger in `%APPDATA%\ai-code-usage-tray` are kept.
-3. Click the floating bar or tray icon to open the full panel.
-4. Right-click the floating bar or tray icon to refresh, toggle launch-at-login, toggle price-table updates, change the activity ring style, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
+3. Click the floating bar or tray icon to open the full panel; its 报表 button opens the usage report.
+4. Right-click the floating bar or tray icon to open the usage report, refresh, toggle launch-at-login, toggle price-table updates, change the activity ring style, switch top/right docking, hide the floating bar, toggle fullscreen auto-hide, or quit.
 
 Prefer not to install? `AI-Code-Usage-Tray-*-win-x64.exe` (no `Setup` in the name) is the portable build: double-click to run. It unpacks itself to a new temporary folder on every launch, so it starts slower, and Windows may treat its tray icon as a new program each time.
 
@@ -104,6 +115,30 @@ Moving from the portable build to the installer: quit the portable app first (ri
 
 > [!WARNING]
 > The builds are not code-signed yet, so SmartScreen may warn you. Download only from this repository's Releases and verify the SHA-256 published with each release. Signed builds will follow the [Code signing policy](#code-signing-policy) below.
+
+<a id="usage-report"></a>
+## Usage report
+
+Open it from the tray menu (打开用量报表) or the panel's 报表 button. It is an ordinary window: resize it, keep it open — it refreshes with the panel every 30 seconds.
+
+| Part | What it shows |
+| --- | --- |
+| Filters | Range (today / 7 / 30 / 90 days), whether the charts plot amount or tokens, and which tools to include. The range and chart choice are remembered. |
+| Tiles | Amount, tokens, requests, sessions and cache hit rate (cache reads ÷ all input), with the change against the previous period of the same length — "yesterday" for today. |
+| Trend | One column per day, stacked by tool; by hour for today. Hover for the per-tool numbers; 表格视图 under the chart lists them all. |
+| Per tool / hour of day | Each tool's amount, share, tokens, cache hit rate, requests and sessions; and when in the day the usage happens. |
+| Per project | Sessions grouped by working directory across tools (`C:\x` and `c:/x/` are one project), with Claude Code worktrees (`<repo>\.claude\worktrees\<name>`) folded into their repository. |
+| Costliest sessions | Title, project, client, amount, tokens, requests, last activity. Subagent work and history copied by resume or fork count toward the session that ran them. |
+| Per model | Requests, input, cache reads, output and amount per model; models without a price say so. |
+
+The amounts add up values of different kinds — API-equivalent for Claude, Codex and Antigravity, billed for Grok, recorded for OpenCode — and the report says so at the bottom. Token totals are put on one scale first: Codex and Grok count cache reads inside their input, the other three report them separately. The 90-day view has no comparison, because it would mean reading 180 days of history.
+
+The same report is on the command line, without Electron:
+
+```powershell
+npm run usage -- --days 30                  # per tool and per day
+npm run usage -- --days 7 --by project      # or: tool, day, hour, model, project, session
+```
 
 ## Where the data comes from
 
@@ -116,22 +151,29 @@ Moving from the portable build to the installer: quit the portable app first (ri
 | Claude account (optional) | Anthropic OAuth usage endpoint | official percentages and exact reset times |
 | Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | tokens, quota windows, models, session activity |
 | Grok CLI | `~/.grok/sessions/**/updates.jsonl` + `~/.grok/logs/unified.jsonl` | per-turn tokens, official billed cost, subscription weekly quota, session activity |
+| Antigravity (IDE and `agy` CLI) | `~/.gemini/antigravity*/conversations/*.db` + `conversation_summaries.db` | per-turn tokens and models, titles, workspaces, session activity |
+| OpenCode | `~/.local/share/opencode/opencode.db` (`$XDG_DATA_HOME/opencode` when set) | per-message tokens, models and the amount OpenCode recorded, titles, directories |
 
 The Microsoft Store build of Claude Desktop is detected automatically under `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/`.
 
+Antigravity and OpenCode keep SQLite databases; the app opens them read-only and only when they changed, so it never blocks the tool writing them. Antigravity's token counts sit in protobuf records whose field numbers were reverse-engineered by [TokenMe](https://github.com/Bencibr/tokenme) (MIT) and re-checked here against real databases; the older `antigravity-ide` and `antigravity-backup` folders hold copies of the same conversations, so turns merge by conversation and response id instead of adding up.
+
 ### How the cost is computed
 
-Claude and Codex costs come from a hand-maintained table of official standard API list prices, [`lib/prices.json`](lib/prices.json), stamped with the date it was last verified — the "price snapshot" date at the bottom of the panel. Neither vendor publishes pricing in a machine-readable form, so the table is kept here and the app fetches it: about 10 seconds after launch and then once a day (hourly after a failed attempt), from `raw.githubusercontent.com`, falling back to `cdn.jsdelivr.net` where GitHub is unreachable. A downloaded table is used only if it passes validation (known schema, sane numbers, every model still present) and is at least as new as the table in use. Otherwise, or offline, the app keeps the last good download (`%APPDATA%\ai-code-usage-tray\prices.json`) or the copy built into the app. The tray menu item 自动更新价格表 turns the download off; the table already in use stays. What the table models:
+Claude, Codex and Antigravity costs come from a hand-maintained table of official standard API list prices, [`lib/prices.json`](lib/prices.json), stamped with the date it was last verified — the "price snapshot" date at the bottom of the panel. None of the three vendors publishes pricing in a machine-readable form, so the table is kept here and the app fetches it: about 10 seconds after launch and then once a day (hourly after a failed attempt), from `raw.githubusercontent.com`, falling back to `cdn.jsdelivr.net` where GitHub is unreachable. A downloaded table is used only if it passes validation (known schema, sane numbers, every model still present) and is at least as new as the table in use. Otherwise, or offline, the app keeps the last good download (`%APPDATA%\ai-code-usage-tray\prices.json`) or the copy built into the app. The tray menu item 自动更新价格表 turns the download off; the table already in use stays. What the table models:
 
 - Prompt caching: cache write 1.25x (5-minute) / 2x (1-hour), cache read 0.1x — 0.05x on Claude Opus 5.5, 0.025x on Claude Fable 5.1 and Mythos 5.1.
 - Fast mode (2x) on Opus 5.5 / 5 / 4.8, and `inference_geo: "us"` (1.1x), read from each transcript row.
 - Codex long context (input over 272K: 2x input, 1.5x output).
+- Gemini context caching rates, and the Pro models' tier for prompts over 200K. Antigravity sends experiment ids such as `gemini-3.7-flash-control` or `gemini-3-flash-a`; they price as their model by the longest-prefix rule. Claude models used inside Antigravity price from the `claude` section.
 - Bedrock and Vertex model ids (`us.anthropic.…`, `name@date`), with the documented 10% regional premium; `global.` profiles at base price.
 - Retired models stay listed so older transcripts still price.
 
-Models without a public list price (for example Codex's internal `codex-auto-review` label) show as "unavailable", are left out of the total, and the total is marked incomplete rather than guessed.
+Models without a public list price (for example Codex's internal `codex-auto-review` label, or Antigravity's `gemini-pro-default`, which names a router rather than a model) show as "unavailable", are left out of the total, and the total is marked incomplete rather than guessed.
 
-`npm run check-prices` checks the table against Anthropic's and OpenAI's own pricing pages — every price, plus a row for every model the Codex model page offers — and against LiteLLM's community-maintained cost map; CI runs it weekly. It only reports: a person edits the table.
+Grok and OpenCode need no table: Grok's amount is what Grok CLI recorded as billed, and OpenCode's is what OpenCode recorded per message from its own models.dev prices — an estimate for API keys, 0 for subscriptions and local models.
+
+`npm run check-prices` checks the table against Anthropic's, OpenAI's and Google's own pricing pages — every price, plus a row for every model the Codex model page offers — and against LiteLLM's community-maintained cost map; CI runs it weekly. It only reports: a person edits the table.
 
 #### Updating the price table
 
@@ -141,12 +183,13 @@ Everything is in one file, [`lib/prices.json`](lib/prices.json). Pushing it to `
 | --- | --- |
 | Claude prices | The `claude` section. One row per model, USD per million tokens: `"claude-opus-5": { "input": 5, "output": 25 }`. Optional fields: `cacheRead` (cache-hit multiplier, default 0.1), `fast` (fast-mode multiplier), `legacy: true` (retired model, exempt from the Bedrock regional premium). |
 | Codex prices | The `codex` section: `"gpt-5.6-sol": { "input": 4, "cachedInput": 0.4, "output": 20 }`. Which models get a row is written at the top of `lib/codex-usage.js`. `codexAliases` points ids the pricing page documents as aliases at a row. |
+| Gemini prices (Antigravity) | The `gemini` section: `"gemini-3.8-flash": { "input": 0.75, "cachedInput": 0.075, "output": 3.75 }`. Optional `longContext: { "above": 200000, "input": 4, "cachedInput": 0.4, "output": 18 }` replaces all three rates for a call whose prompt (input plus cache reads) exceeds `above`. Copies older than 1.6.0 ignore this section. |
 | Snapshot date | `snapshot`. The panel footer shows it. |
 
 Row keys are the model id **without** a date suffix (`claude-opus-5`, not `claude-opus-5-20260514`). `priceFor` matches by prefix and the longest key wins, so `claude-opus-4` and `claude-opus-4-5` coexist. A model that only exists as a longer sibling of an existing key (`gpt-5.5-pro` next to `gpt-5.5`) needs its own row, or it silently takes the shorter key's price — `npm run check-prices` reports that as an `unlisted id` line.
 
-1. `npm run check-prices` — each difference prints as `official  model  field  ours → official`, or with `claude` / `codex` in front for LiteLLM. Both vendors refuse some regions and Node's `fetch` ignores the system proxy; behind a proxy, run `NODE_USE_ENV_PROXY=1 npm run check-prices` (Node 24+, reads `HTTPS_PROXY`).
-2. `official` lines come straight from the vendors' pages. Confirm LiteLLM lines there too: [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), [OpenAI pricing](https://developers.openai.com/api/docs/pricing). LiteLLM is community data and occasionally contradicts itself.
+1. `npm run check-prices` — each difference prints as `official  model  field  ours → official`, or with `claude` / `codex` / `gemini` in front for LiteLLM. A `notes` line about a dated price change (the Gemini 3.6–3.8 Flash rates rise on 2027-01-01) is a reminder to edit the row on that day: the table has no dates of its own. Both vendors refuse some regions and Node's `fetch` ignores the system proxy; behind a proxy, run `NODE_USE_ENV_PROXY=1 npm run check-prices` (Node 24+, reads `HTTPS_PROXY`).
+2. `official` lines come straight from the vendors' pages. Confirm LiteLLM lines there too: [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), [OpenAI pricing](https://developers.openai.com/api/docs/pricing), [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing). LiteLLM is community data and occasionally contradicts itself.
 3. Edit the row(s), set `snapshot` to today's date, run `npm test`, commit, and push to `main`.
 
 Installed copies depend on this file, so four rules:
@@ -223,6 +266,7 @@ Input methods that load a text-service DLL into every program (Tencent WeType, f
 ## Privacy and security
 
 - No transcripts, prompts, project paths or session titles are uploaded.
+- Antigravity's and OpenCode's databases are opened read-only; nothing is written next to them.
 - Apart from the optional Claude account (which asks Anthropic for your quota), the only automatic network request downloads the public price table (`lib/prices.json`) from this repository, at launch and once a day (hourly after a failed attempt). It sends nothing about you; the server sees an ordinary download. Turn it off with the tray menu item 自动更新价格表.
 - No browser cookies are read, and no Anthropic / OpenAI / xAI API key is needed.
 - If a local file is corrupt, locked or unreadable, the last snapshot is kept and marked stale.
@@ -241,7 +285,7 @@ Input methods that load a text-service DLL into every program (Tencent WeType, f
 <a id="development"></a>
 ## Development
 
-Requires **Windows 10/11, Node.js 22+ and npm**:
+Requires **Windows 10/11, Node.js 24+ and npm** (24 is what Electron 43 runs; the tests open SQLite through Node's built-in `node:sqlite`):
 
 ```powershell
 git clone https://github.com/saime428/ai-code-usage-tray.git
@@ -249,7 +293,7 @@ cd ai-code-usage-tray
 npm ci
 npm test
 npm start
-npm run usage   # print today's usage in the terminal, no Electron needed
+npm run usage   # print today's usage in the terminal, no Electron needed (add -- --days 30 for a report)
 npm run check-prices   # check the price table against the vendors' pages and LiteLLM
 ```
 
@@ -268,12 +312,18 @@ main.js                 Electron main process, tray, windows, refresh scheduling
 preload.js              restricted IPC bridge
 lib/usage.js            Claude local usage and session parsing
 lib/codex-usage.js      Codex local usage and quota parsing
-lib/prices.json         Claude / Codex price table (the app also downloads it from main)
-lib/prices.js           price table validation, and the URLs it is downloaded from
 lib/grok-usage.js       Grok local usage, official cost and weekly quota
+lib/antigravity-usage.js  Antigravity conversation databases (protobuf decoding) and Gemini pricing
+lib/opencode-usage.js   OpenCode's SQLite store
+lib/jsonl.js            line reader that resumes a file from where the last read stopped
+lib/report.js           shared per-hour rows, the panel summary and the cross-tool report
+lib/usage-worker.js     worker thread that runs all of the above off the main process
+lib/prices.json         Claude / Codex / Gemini price table (the app also downloads it from main)
+lib/prices.js           price table validation, and the URLs it is downloaded from
 lib/claude-oauth.js     optional Claude OAuth / PKCE
 lib/hang-guard.js       hang log watchdog and not-responding instance lookup
 renderer/index.html     full panel
+renderer/report.html    usage report window
 lib/activity.js         activity watch behind the ring (session writes + hook state)
 renderer/floating.html  edge-docked floating bar
 hooks/                  optional Claude Code state hooks
@@ -303,6 +353,9 @@ Price fixes don't need a release — see [Updating the price table](#updating-th
 - Bedrock's own pricing for retired models is not modeled.
 - Codex fast mode (`service_tier: "priority"`, 2x the standard price, 2.5x on gpt-5.5) is not modeled; those turns show the standard price.
 - Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
+- Antigravity and OpenCode have no quota display, no click-to-open link and no per-account tracking. The floating bar, its activity ring and the tray tooltip stay on Claude, Codex and Grok, the tools with quota windows.
+- An Antigravity turn is dated by its own timestamp or, on newer builds that stopped writing one, by the matching step; a turn with neither falls back to the conversation's start time. That never happened on the databases checked so far.
+- The first refresh after launch, and the first report over a longer range, still read every file in range once (about 3 seconds for 30 days of the author's history); only later reads are incremental. Nothing is cached on disk.
 
 ## Contributing
 
@@ -321,5 +374,5 @@ If you add parsing logic that is not obvious at a glance, include a small test c
 ---
 
 <p align="center">
-  Not affiliated with or endorsed by Anthropic, OpenAI, or xAI.
+  Not affiliated with or endorsed by Anthropic, OpenAI, xAI, Google, or the OpenCode project.
 </p>

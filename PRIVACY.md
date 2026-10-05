@@ -1,8 +1,8 @@
 # Privacy Policy
 
-Effective date: September 27, 2026
+Effective date: October 4, 2026
 
-AI Code Usage Tray is a local-first desktop application. It reads usage and session metadata already stored on the user's computer by Claude Code, Claude Desktop, Codex CLI, Codex Desktop, and Grok CLI.
+AI Code Usage Tray is a local-first desktop application. It reads usage and session metadata already stored on the user's computer by Claude Code, Claude Desktop, Codex CLI, Codex Desktop, Grok CLI, Antigravity, and OpenCode. Antigravity's and OpenCode's databases are opened read-only.
 
 ## Data collection
 
