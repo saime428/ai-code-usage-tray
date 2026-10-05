@@ -150,11 +150,14 @@ npm run usage -- --days 7 --by project      # 或者 tool、day、hour、model�
 | Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | token、额度窗口、模型、会话活动 |
 | Grok CLI | `~/.grok/sessions/**/updates.jsonl` + `~/.grok/logs/unified.jsonl` | 逐轮 token、官方结算金额、订阅周额度、会话活动 |
 | Antigravity（IDE 和 `agy` CLI） | `~/.gemini/antigravity*/conversations/*.db` + `conversation_summaries.db` | 逐轮 token 和模型、标题、工作目录、会话活动 |
+| Antigravity 额度 | 正在运行的 Antigravity 语言服务，通过它在 127.0.0.1 上的本机接口 | Gemini 和 Claude/GPT 两组的 5 小时、每周额度和重置时间 |
 | OpenCode | `~/.local/share/opencode/opencode.db`（设置了 `$XDG_DATA_HOME` 时在其下的 `opencode`） | 逐条消息的 token、模型和 OpenCode 记下的金额、标题、目录 |
 
 Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/` 下的同名数据文件。
 
 Antigravity 和 OpenCode 用的是 SQLite 数据库，应用只读方式打开、而且只在文件有变化时才打开，不会挡住正在写库的工具。Antigravity 的 token 记在 protobuf 记录里，字段号来自 [TokenMe](https://github.com/Bencibr/tokenme)（MIT）的逆向结果，并在这里用真实数据库重新核对过；老的 `antigravity-ide`、`antigravity-backup` 目录里是同一批会话的副本，所以按会话和响应 id 合并，而不是相加。
+
+Antigravity 不把额度写到硬盘上，只有正在运行的语言服务手里有，它通过一个本机接口把设置 → Models 页面上的那几个数提供给自己的界面。Antigravity 开着的时候，应用找到这个服务（Antigravity 安装目录里的 `language_server.exe`），从它的启动参数里取访问令牌、从系统的端口表里取端口，在 127.0.0.1 上向它查询——[TokenMe](https://github.com/Bencibr/tokenme) 和 [CodexBar](https://github.com/steipete/CodexBar) 在 macOS 上用的也是这个接口。这个服务缓存的数不会跟着用量变（实测发了两条消息后还是老数），所以本机 Antigravity 有新用量、某个窗口过了重置时间、以及每 10 分钟，应用会让它向 Google 刷新一次，其余时候沿用上一次的结果。Antigravity 关掉后保留最后一次的数，标出是多久前的，超过 15 分钟变暗。只装了 `agy` 命令行时读不到额度：向它要额度得用它自己的登录，可能会弹出浏览器。
 
 ### 金额是怎么算的
 
@@ -265,6 +268,7 @@ Grok 和 OpenCode 不需要价格表：Grok 的金额是 Grok CLI 记下的结�
 
 - 不上传 transcript、提示词、项目路径或会话标题。
 - Antigravity 和 OpenCode 的数据库只以只读方式打开，不会在旁边写任何东西。
+- Antigravity 的额度是在 127.0.0.1 上向它自己的语言服务查询的。查询用的访问令牌从该服务的启动参数里读取，只留在内存里，直到某次刷新发现该服务已退出（退出后最多约 10 分钟）；为了回答，Antigravity 可能会用它自己的登录向 Google 刷新一次。
 - 除了可选的 Claude 账户（会向 Anthropic 查询额度），唯一的自动联网请求是从本仓库下载公开的价格表（`lib/prices.json`），启动时和之后每天各一次（失败后每小时重试）。它不发送任何关于你的信息，服务器看到的只是一次普通下载。托盘菜单「自动更新价格表」可以关掉。
 - 不读浏览器 Cookie，也不需要 Anthropic / OpenAI / xAI API Key。
 - 本地文件损坏、被锁或权限不够时，会留下上一份快照，并标成过期。
@@ -311,6 +315,7 @@ lib/usage.js            Claude 本地用量与会话解析
 lib/codex-usage.js      Codex 本地用量与额度解析
 lib/grok-usage.js       Grok 本地用量、官方金额与周额度解析
 lib/antigravity-usage.js  Antigravity 会话数据库（protobuf 解码）与 Gemini 计价
+lib/antigravity-quota.js  从正在运行的 Antigravity 语言服务读取额度
 lib/opencode-usage.js   OpenCode 的 SQLite 数据库
 lib/jsonl.js            从上次读到的位置接着读的逐行读取器
 lib/report.js           共用的按小时数据行、面板汇总和跨工具报表
@@ -323,6 +328,7 @@ renderer/index.html     完整面板
 renderer/report.html    用量报表窗口
 lib/activity.js         流光环的活动监听（会话目录写入 + hook 状态）
 renderer/floating.html  贴边悬浮条
+lib/floating-providers.js  悬浮条显示哪几家
 hooks/                   可选 Claude Code 状态 hooks
 ```
 
@@ -349,7 +355,7 @@ git status --short
 - Bedrock 对退役型号的另一套定价没有建模。
 - Codex 的快速模式（`service_tier: "priority"`，官方价为标准价的 2x，gpt-5.5 为 2.5x）没有建模，这些回合按标准价显示。
 - 没有公开牌价的型号（如 `codex-auto-review`）会被排除在合计之外并标出，不做估算。
-- Antigravity 和 OpenCode 没有额度显示、点击跳转和分账号统计。它们在悬浮条上显示 token 用量而不是额度，也没有流光环；托盘提示只覆盖 Claude、Codex、Grok。
+- Antigravity 的额度要在本应用启动后 Antigravity 运行过才有（它不存盘），只装了 `agy` 命令行时也读不到。OpenCode 没有额度显示。两家都没有点击跳转、分账号统计和流光环，托盘提示只覆盖 Claude、Codex、Grok。
 - Antigravity 的每一轮按它自己的时间戳定日期；新版本不再写这个时间戳，就用对应 step 的时间；两者都没有时退回到会话开始时间。目前核对过的数据库里还没出现过这种情况。
 - 启动后的第一次统计、以及第一次打开较长范围的报表，仍要把范围内的文件各读一遍（作者 30 天的记录约 3 秒）；之后才是增量读取。读过的结果不落盘。
 

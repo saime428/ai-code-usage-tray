@@ -152,11 +152,14 @@ npm run usage -- --days 7 --by project      # or: tool, day, hour, model, projec
 | Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | tokens, quota windows, models, session activity |
 | Grok CLI | `~/.grok/sessions/**/updates.jsonl` + `~/.grok/logs/unified.jsonl` | per-turn tokens, official billed cost, subscription weekly quota, session activity |
 | Antigravity (IDE and `agy` CLI) | `~/.gemini/antigravity*/conversations/*.db` + `conversation_summaries.db` | per-turn tokens and models, titles, workspaces, session activity |
+| Antigravity quota | the running Antigravity language server, over its local endpoint on 127.0.0.1 | 5-hour and weekly windows for Gemini and for Claude/GPT, with reset times |
 | OpenCode | `~/.local/share/opencode/opencode.db` (`$XDG_DATA_HOME/opencode` when set) | per-message tokens, models and the amount OpenCode recorded, titles, directories |
 
 The Microsoft Store build of Claude Desktop is detected automatically under `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/`.
 
 Antigravity and OpenCode keep SQLite databases; the app opens them read-only and only when they changed, so it never blocks the tool writing them. Antigravity's token counts sit in protobuf records whose field numbers were reverse-engineered by [TokenMe](https://github.com/Bencibr/tokenme) (MIT) and re-checked here against real databases; the older `antigravity-ide` and `antigravity-backup` folders hold copies of the same conversations, so turns merge by conversation and response id instead of adding up.
+
+Antigravity never writes its quota to disk; only its running language server holds it, and it serves the figures its Settings → Models page shows over a local endpoint. While Antigravity is running, the app finds that server (`language_server.exe` in the Antigravity install), takes the access token from its command line and the port from the system's socket table, and asks it on 127.0.0.1 — the same call [TokenMe](https://github.com/Bencibr/tokenme) and [CodexBar](https://github.com/steipete/CodexBar) make on macOS. The server's cached figures do not follow usage (two messages later they had not moved), so the app asks it to refresh from Google when this machine's Antigravity usage grows, when a window's reset time has passed, and every 10 minutes; in between the last answer stands. When Antigravity is closed the last figures stay, marked with their age and dimmed after 15 minutes. The `agy` CLI alone is not read: asking it would need its own sign-in and can open a browser.
 
 ### How the cost is computed
 
@@ -267,6 +270,7 @@ Input methods that load a text-service DLL into every program (Tencent WeType, f
 
 - No transcripts, prompts, project paths or session titles are uploaded.
 - Antigravity's and OpenCode's databases are opened read-only; nothing is written next to them.
+- Antigravity's quota is asked of its own language server on 127.0.0.1. The access token for those calls is read from the server's command line and kept in memory until a refresh finds that server gone (at most about ten minutes after it exits); to answer, Antigravity may refresh the figures from Google with its own sign-in.
 - Apart from the optional Claude account (which asks Anthropic for your quota), the only automatic network request downloads the public price table (`lib/prices.json`) from this repository, at launch and once a day (hourly after a failed attempt). It sends nothing about you; the server sees an ordinary download. Turn it off with the tray menu item 自动更新价格表.
 - No browser cookies are read, and no Anthropic / OpenAI / xAI API key is needed.
 - If a local file is corrupt, locked or unreadable, the last snapshot is kept and marked stale.
@@ -314,6 +318,7 @@ lib/usage.js            Claude local usage and session parsing
 lib/codex-usage.js      Codex local usage and quota parsing
 lib/grok-usage.js       Grok local usage, official cost and weekly quota
 lib/antigravity-usage.js  Antigravity conversation databases (protobuf decoding) and Gemini pricing
+lib/antigravity-quota.js  Antigravity quota from its running language server
 lib/opencode-usage.js   OpenCode's SQLite store
 lib/jsonl.js            line reader that resumes a file from where the last read stopped
 lib/report.js           shared per-hour rows, the panel summary and the cross-tool report
@@ -326,6 +331,7 @@ renderer/index.html     full panel
 renderer/report.html    usage report window
 lib/activity.js         activity watch behind the ring (session writes + hook state)
 renderer/floating.html  edge-docked floating bar
+lib/floating-providers.js  which tools the floating bar shows
 hooks/                  optional Claude Code state hooks
 ```
 
@@ -353,7 +359,7 @@ Price fixes don't need a release — see [Updating the price table](#updating-th
 - Bedrock's own pricing for retired models is not modeled.
 - Codex fast mode (`service_tier: "priority"`, 2x the standard price, 2.5x on gpt-5.5) is not modeled; those turns show the standard price.
 - Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
-- Antigravity and OpenCode have no quota display, no click-to-open link and no per-account tracking. On the floating bar they show token counts instead of quota, without the activity ring; the tray tooltip stays on Claude, Codex and Grok.
+- Antigravity's quota shows only once Antigravity has run since the app started (it is not stored on disk), and the `agy` CLI on its own does not provide it. OpenCode has no quota display. Neither has a click-to-open link, per-account tracking or the activity ring, and the tray tooltip stays on Claude, Codex and Grok.
 - An Antigravity turn is dated by its own timestamp or, on newer builds that stopped writing one, by the matching step; a turn with neither falls back to the conversation's start time. That never happened on the databases checked so far.
 - The first refresh after launch, and the first report over a longer range, still read every file in range once (about 3 seconds for 30 days of the author's history); only later reads are incremental. Nothing is cached on disk.
 

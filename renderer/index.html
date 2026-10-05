@@ -340,7 +340,11 @@
             ['7d', usage.rateLimits && usage.rateLimits.sevenDay],
             ['Fable', usage.rateLimits && usage.rateLimits.sevenDayFable],
           ].filter(([, value]) => value)
-        : ((usage.rateLimits && usage.rateLimits.windows) || []).map((value) => [windowLabel(value.windowMinutes), value]);
+        : ((usage.rateLimits && usage.rateLimits.windows) || []).map((value) => [
+            // Antigravity has two quota groups, each with a 5h and a weekly window
+            `${value.group ? `${esc(value.group)} ` : ''}${windowLabel(value.windowMinutes)}`,
+            value,
+          ]);
       const limitsEl = document.getElementById('limits');
       limitsEl.hidden = limits.length === 0;
       limitsEl.innerHTML = limits.map(([label, value]) => {

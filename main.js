@@ -23,6 +23,7 @@ const { DEFAULT_ANTIGRAVITY_HOME } = require('./lib/antigravity-usage');
 const { defaultDbPath: openCodeDbPath } = require('./lib/opencode-usage');
 const { PROVIDERS, PROVIDER_IDS } = require('./lib/report');
 const { savedPick, shownProviders, toggledPick } = require('./lib/floating-providers');
+const { createAntigravityQuota } = require('./lib/antigravity-quota');
 const { dayKey, normalizeRangeDays, rangeBounds } = require('./lib/range');
 const { detectIdentities } = require('./lib/account-identity');
 const {
@@ -128,6 +129,7 @@ let usageSnapshot = null;
 // ponytail: only grows. A tool whose read fails for a refresh keeps its spot instead of
 // vanishing; one deleted while running stays until restart.
 const detectedProviders = new Set();
+const antigravityQuota = createAntigravityQuota();
 const floatingSizes = {};
 let refreshPromise = null;
 let attentionSessions = new Set();
@@ -830,6 +832,18 @@ async function collectAllUsage() {
   }
   if (local) snapshot.diagnostics = local.diagnostics;
   if (oauthRateLimits) snapshot.claude.rateLimits = oauthRateLimits;
+  // Antigravity's quota only exists in its running language server (lib/antigravity-quota.js);
+  // new usage in this refresh is the cue to ask it for fresh numbers.
+  if (process.platform === 'win32' && snapshot.antigravity.detected) {
+    const { totals } = snapshot.antigravity;
+    try {
+      snapshot.antigravity.rateLimits = await antigravityQuota.read({
+        usageMark: `${snapshot.antigravity.date}:${totals.requests}:${totals.input}:${totals.output}`,
+      });
+    } catch {
+      // A failed local call leaves the quota out of this refresh; the next one retries.
+    }
+  }
   const desktopSession = desktopConversationSession(desktopConversation, collectedAt);
   if (desktopSession && !snapshot.claude.sessions.some((session) => session.sessionId === desktopSession.sessionId)) {
     snapshot.claude.sessions.push(desktopSession);

@@ -219,13 +219,13 @@
   </main>
   <script>
     // cacheSeparate: input 不含缓存的几家(口径见 lib/report.js 的 PROVIDERS),总量要把缓存加回来。
-    // noQuota: 根本没有额度窗口的几家,没额度不算异常。
+    // noQuota: 根本没有额度窗口的几家,没额度不算异常。quotaHint: 额度要满足条件才读得到的,读不到时说明原因。
     const providerInfo = {
       claude: { name: 'Claude', logo: 'claude', logoClass: 'claude', costLabel: '等价值', cacheSeparate: true },
       codex: { name: 'Codex', logo: 'openai', logoClass: 'openai', costLabel: '等价值' },
       grok: { name: 'Grok', logo: 'grok', logoClass: 'grok', costLabel: '金额' },
       // Antigravity 的标志只有位图:安装包 app.asar 里的 icon.png,去掉白色底板、裁到拱形、缩成 64px
-      antigravity: { name: 'Antigravity', image: 'antigravity.png', costLabel: '等价值', cacheSeparate: true, noQuota: true },
+      antigravity: { name: 'Antigravity', image: 'antigravity.png', costLabel: '等价值', cacheSeparate: true, quotaHint: 'Antigravity 运行时才读得到额度' },
       opencode: { name: 'OpenCode', logo: 'opencode', logoClass: 'opencode', costLabel: '记录金额', cacheSeparate: true, noQuota: true },
     };
     // 流光环只有这三家:activity.js 只看它们的会话目录
@@ -248,17 +248,27 @@
     };
     const windowsFor = (provider, usage) => {
       if (provider === 'codex' && ['api', 'apikey'].includes(usage.authMode)) return [];
-      return provider === 'claude'
-        ? [
-            ['5h', usage.rateLimits && usage.rateLimits.fiveHour],
-            ['7d', usage.rateLimits && usage.rateLimits.sevenDay],
-            ['Fable', usage.rateLimits && usage.rateLimits.sevenDayFable],
-          ].filter(([, value]) => value)
-        : [
-            ['5h', usage.rateLimits && usage.rateLimits.windows.find((value) => value.windowMinutes === 300)],
-            ['7d', usage.rateLimits && usage.rateLimits.windows.find((value) => value.windowMinutes === 10080)],
-          ].filter(([, value]) => value);
+      if (provider === 'claude') {
+        return [
+          ['5h', usage.rateLimits && usage.rateLimits.fiveHour],
+          ['7d', usage.rateLimits && usage.rateLimits.sevenDay],
+          ['Fable', usage.rateLimits && usage.rateLimits.sevenDayFable],
+        ].filter(([, value]) => value);
+      }
+      const all = (usage.rateLimits && usage.rateLimits.windows) || [];
+      // Antigravity 有两组:收起条只放厂商排第一的那组(Gemini)。它的窗口都过了重置时间时
+      // 宁可退回显示 token,也别让另一组的数顶替上来;Codex/Grok 没有 group,全部保留
+      const primary = usage.rateLimits && usage.rateLimits.primaryGroup;
+      const windows = all.filter((value) => value.group === (primary || (all[0] && all[0].group)));
+      return [
+        ['5h', windows.find((value) => value.windowMinutes === 300)],
+        ['7d', windows.find((value) => value.windowMinutes === 10080)],
+      ].filter(([, value]) => value);
     };
+    // 收起条只放得下一组(Antigravity 取第一组 Gemini);展开的卡片把每组都列出来
+    const quotaRows = (provider, usage) => provider === 'antigravity' && usage.rateLimits
+      ? usage.rateLimits.windows.map((value) => [`${value.group} ${value.windowMinutes === 300 ? '5h' : '7d'}`, value])
+      : windowsFor(provider, usage);
     const isStale = (usage) =>
       usage.dataStatus?.state !== 'ok' || Boolean(usage.rateLimits && usage.rateLimits.stale);
     const tokenValue = (value) => Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -282,6 +292,7 @@
         return tokenUsage(provider, usage).total > 0 ? `没有额度窗口 · 显示${rangeLabel(usage)} Token` : `${rangeLabel(usage)}暂无用量`;
       }
       if (!windowsFor(provider, usage).length) {
+        if (providerInfo[provider].quotaHint) return providerInfo[provider].quotaHint;
         return tokenUsage(provider, usage).total > 0
           ? `未提供额度 · 显示${rangeLabel(usage)} Token`
           : '额度数据尚不可用';
@@ -332,7 +343,7 @@
         .map((provider) => {
           const info = providerInfo[provider];
           const usage = latest[provider];
-          const windows = windowsFor(provider, usage);
+          const windows = quotaRows(provider, usage);
           const tokens = tokenUsage(provider, usage);
           const stale = isStale(usage);
           return `<section class="provider ${stale ? 'stale' : ''}" data-provider="${provider}">
@@ -348,7 +359,7 @@
             }).join('') : tokens.total > 0 || info.noQuota
               ? `<div class="token-fallback"><div class="token-total"><small>${rangeLabel(usage)} Token</small>${formatTokens(tokens.total)}</div><div class="token-breakdown">输入 ${formatTokens(tokens.input)} · 输出 ${formatTokens(tokens.output)}</div></div>`
               : '<div class="empty-quota">额度 —</div>'}
-            <div class="provider-status ${stale || (!info.noQuota && !windows.length && tokens.total === 0) ? 'bad' : ''}" title="${usage.rateLimits?.source === 'desktop' ? 'Claude Desktop 每约 5 分钟采样；≈ 为本地推算时间' : ''}">${statusText(usage, provider)}${usage.rateLimits?.source === 'desktop' ? ' · 重置时间为本地推算' : ''}</div>
+            <div class="provider-status ${stale || (!info.noQuota && !info.quotaHint && !windows.length && tokens.total === 0) ? 'bad' : ''}" title="${usage.rateLimits?.source === 'desktop' ? 'Claude Desktop 每约 5 分钟采样；≈ 为本地推算时间' : ''}">${statusText(usage, provider)}${usage.rateLimits?.source === 'desktop' ? ' · 重置时间为本地推算' : ''}</div>
           </section>`;
         })
         .join('');
