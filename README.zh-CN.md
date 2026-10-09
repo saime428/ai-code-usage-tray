@@ -48,6 +48,7 @@
 ### v1.7.2
 
 - **托盘图标改成每家一格，还能告诉你哪家跑完了**。它以前是一个方块：任何会话最近两分钟写过盘就绿，否则陶土色，Claude 弹权限确认时红。它跟的是 30 秒刷新，比悬浮条的流光环最多晚两分半；开自动模式跑 agent 的人只会见到陶土色和绿色。现在悬浮条显示几家，它就分几格，顺序和悬浮条一样：灰是空闲，蓝是在跑，绿是跑完了你还没看，红是需要你。它和流光环用同一路信号，一秒内就有反应。绿格在你打开或关上面板、那一家又开始跑、或者过了 10 分钟时变回灰色。鼠标悬停时每格一行。见[托盘图标](#托盘图标)。
+- **Claude Sonnet 5.5 和 Haiku 5.5 按官方价格页定价**。Sonnet 5.5 原来没有自己的一行，沿用了 Sonnet 5 的，缓存读取按官方价（0.05x）的两倍算。Haiku 5.5 原来完全没有价格，现在按每次请求的提示长度计价，提示超过 10 万 token 时按 5 倍算。已安装的应用一天内会拿到新价格表，但只有 1.7.2 会按长提示分档：旧版本把每次 Haiku 5.5 请求都按短提示价格算。见[金额是怎么算的](#金额是怎么算的)。
 - **Codex 和 Grok 的流光环在模型长时间思考时不再熄灭**。以前最后一次写盘 20 秒后就灭，模型想一分钟，环就灭了。现在和 Antigravity 一样看各家自己的回合标记。作者本机所有 Codex、Grok 日志逐行回放过：没有一次把还在跑的一轮判成结束。见[任务在跑时的流光环](#任务在跑时的流光环)。
 
 ### v1.7.1
@@ -178,7 +179,8 @@ Antigravity 不把额度写到硬盘上，只有正在运行的语言服务手�
 
 Claude / Codex / Antigravity 的金额来自一张手工维护的官方标准 API 牌价表 [`lib/prices.json`](lib/prices.json)，表上记着最后一次核对的日期，就是面板底部显示的「价格快照」。三家厂商都不提供机器可读的价格，所以表放在本仓库里维护，由应用来下载：启动约 10 秒后和之后每天各一次（失败后每小时重试），从 `raw.githubusercontent.com` 下载，连不上 GitHub 时改用 `cdn.jsdelivr.net`。下载的表必须通过校验（认识的 schema、数值合理、型号一个不少），而且不比手上正在用的旧，才会被采用；否则或者联网失败时，继续用上次下载成功的那份（`%APPDATA%\ai-code-usage-tray\prices.json`）或应用内置的那份。托盘菜单「自动更新价格表」可以关掉下载，已经在用的表保持不变。这张表建模了：
 
-- 提示缓存：写入 1.25x（5 分钟）/ 2x（1 小时），读取 0.1x——Claude Opus 5.5 为 0.05x，Claude Fable 5.1 / Mythos 5.1 为 0.025x。
+- 提示缓存：写入 1.25x（5 分钟）/ 2x（1 小时），读取 0.1x——Claude Opus 5.5 和 Sonnet 5.5 为 0.05x，Claude Fable 5.1 / Mythos 5.1 为 0.025x。
+- Claude Haiku 5.5 按提示长度分档：一次请求的提示（输入、缓存读取和缓存写入）超过 10 万 token 时，整次请求按 5 倍计价，输出也算在内。每次请求单独判断。
 - Opus 5.5 / 5 / 4.8 的快速模式（2x）和 `inference_geo: "us"`（1.1x），逐条从转录里读。
 - Codex 长上下文（输入超过 272K：输入 2x、输出 1.5x）。
 - Gemini 的上下文缓存价，以及 Pro 型号在提示超过 200K 时的长上下文档位。Antigravity 发来的是 `gemini-3.7-flash-control`、`gemini-3-flash-a` 这类实验 id，按最长前缀规则算成对应型号的价；Antigravity 里用的 Claude 模型按 `claude` 一节计价。
@@ -197,7 +199,7 @@ Grok 和 OpenCode 不需要价格表：Grok 的金额是 Grok CLI 记下的结�
 
 | 改什么 | 在哪 |
 | --- | --- |
-| Claude 价格 | `claude` 一节。一个型号一行，单位是每百万 token 的美元：`"claude-opus-5": { "input": 5, "output": 25 }`。可选字段：`cacheRead`（缓存命中倍率，默认 0.1）、`fast`（快速模式倍率）、`legacy: true`（退役型号，不吃 Bedrock 区域加价）。 |
+| Claude 价格 | `claude` 一节。一个型号一行，单位是每百万 token 的美元：`"claude-opus-5": { "input": 5, "output": 25 }`。可选字段：`cacheRead`（缓存命中倍率，默认 0.1）、`fast`（快速模式倍率）、`legacy: true`（退役型号，不吃 Bedrock 区域加价）、`longContext: { "above": 100000, "input": 0.5, "output": 2.5 }`（一次请求的提示——输入加缓存读写——超过 `above` 时，输入和输出价格换成这一档，缓存价格随输入价一起变；1.7.2 之前的版本会忽略它，一律按这一行自己的价格算）。 |
 | Codex 价格 | `codex` 一节：`"gpt-5.6-sol": { "input": 4, "cachedInput": 0.4, "output": 20 }`。哪些型号该有一行，写在 `lib/codex-usage.js` 顶部的注释里。`codexAliases` 把价格页写明是别名的 id 指到对应的行。 |
 | Gemini 价格（Antigravity） | `gemini` 一节：`"gemini-3.8-flash": { "input": 0.75, "cachedInput": 0.075, "output": 3.75 }`。可选的 `longContext: { "above": 200000, "input": 4, "cachedInput": 0.4, "output": 18 }`：一次调用的提示（输入加缓存读）超过 `above` 时，三项价格整体换成这一档。1.6.0 之前的版本会忽略这一节。 |
 | 快照日期 | `snapshot`。面板底部显示的就是它。 |

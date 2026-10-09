@@ -43,7 +43,9 @@ const OFFICIAL = {
 // and an id like gemini-2.5-flash-image would prefix-match a text row.
 const GEMINI_NOT_TEXT = /image|tts|live|audio|transcribe|embedding|robotics|omni|veo|lyria|gemma/i;
 const FETCH_TIMEOUT_MS = 30_000;
-// Stay under Codex's 272k long-context tier so costOf() doesn't apply that 2x.
+// Stay under Codex's 272k long-context tier so costOf() doesn't apply that 2x. This also sits
+// exactly on Claude Haiku 5.5's 100,000 boundary, which is not over: raising N would compare
+// LiteLLM's short-prompt rates against Haiku's long tier.
 const N = 100_000;
 const M = 1_000_000;
 const LONG = 300_000; // over 272k: the long-context rates apply to the whole request
@@ -148,9 +150,25 @@ async function checkOfficial() {
     ['cache read', /cache hits/i, { cacheRead: M }],
     ['output', /output/i, { output: M }],
   ];
+  // Haiku 5.5 is priced by prompt length, one row per tier: "(for prompts up to 100,000
+  // tokens)" and "(for prompts over 100,000 tokens)". Each row is checked inside its tier:
+  // under it with a request of exactly the official threshold (so a table threshold below the
+  // page's shows up as drift, and "exactly N is not over" is checked live), over it by padding
+  // the prompt past the threshold and taking the padding's cost back out.
+  const tierCost = (id, tokens, tier) => {
+    if (!tier) return claude.costOf(id, tokens);
+    const above = Number(tier[2].replace(/,/g, ''));
+    if (/up to/i.test(tier[1])) {
+      const k = above / M;
+      return claude.costOf(id, Object.fromEntries(Object.entries(tokens).map(([kind, n]) => [kind, n * k]))) / k;
+    }
+    const pad = above + 1;
+    return claude.costOf(id, { ...tokens, input: (tokens.input || 0) + pad }) - claude.costOf(id, { input: pad });
+  };
   for (const row of claudeRows) {
     const ids = claudeIds(row.Model);
     if (!ids.length) drift.push(`official  unrecognized Claude row "${row.Model}" — map it by hand`);
+    const tier = /prompts (up to|over) ([\d,]+) tokens/i.exec(row.Model);
     for (const id of ids) {
       claudeSeen.add(id);
       if (!claude.priceFor(id)) {
@@ -159,8 +177,9 @@ async function checkOfficial() {
       }
       for (const [label, pattern, tokens] of claudeCells) {
         const official = dollars(column(row, pattern));
-        if (official === null) blind.push(`${OFFICIAL.anthropic}: ${id} has no readable "${label}" cell`);
-        else compare(`${id}  ${label}`, claude.costOf(id, tokens), official);
+        const where = tier ? `${label} (prompts ${tier[1]} ${tier[2]})` : label;
+        if (official === null) blind.push(`${OFFICIAL.anthropic}: ${id} has no readable "${where}" cell`);
+        else compare(`${id}  ${where}`, tierCost(id, tokens, tier), official);
       }
     }
   }
