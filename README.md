@@ -45,6 +45,11 @@
 
 ## What's new
 
+### v1.7.2
+
+- **The tray icon shows each tool separately, and tells you when one has finished.** It used to be a single square: green when any session had written to disk in the last two minutes, clay otherwise, red for a Claude permission prompt. It followed the 30-second refresh, so it trailed the floating bar's ring by up to two and a half minutes, and anyone running agents in auto mode only ever saw clay or green. It now has one cell per tool the floating bar shows, in the bar's order: gray for idle, blue for running, green for a finished turn you haven't looked at yet, red when it needs you. It reacts within a second, from the same watch as the ring. A green cell clears when you open or close the panel, when that tool runs again, or after 10 minutes. Hover over it for one line per cell. See [The tray icon](#the-tray-icon).
+- **Codex and Grok rings stay on through long thinking.** They used to go out 20 seconds after the last write, so a model thinking for a minute turned them off. They now follow each tool's own turn markers, as Antigravity's ring already did. Every Codex and Grok log on the author's machine was replayed line by line: no running turn was ever judged finished. See [The activity ring](#the-activity-ring).
+
 ### v1.7.1
 
 - **Activity ring for Antigravity and OpenCode.** Both now light up on the floating bar while they work: pink for Antigravity, violet for OpenCode. Antigravity's ring follows its step transcript, so it stays on through long thinking and long tool runs until the final answer, goes out about 20 seconds after it or after you press stop, and picks up a turn already running when the app starts. OpenCode's follows writes to its database; that rule has not been tried on a real OpenCode session yet. See [The activity ring](#the-activity-ring).
@@ -239,11 +244,35 @@ The ring does not wait for the 30s snapshot. The main process watches `~/.claude
 
 - Claude sessions with hooks installed follow the hook's working / needs-attention state, which is exact.
 - Antigravity's step transcript says whether a turn is still open: only a reply without tool calls ends the turn (pressing stop writes one too), and a checkpoint is judged by the step before it; after any other step — your message, a tool call or its result, a command, a system message — the model or a tool is still due. Checked against every step in the author's 29 transcripts: the rule never called a finished turn open. So its ring stays on through long thinking and long tool runs until the final answer, then goes out 20 seconds later; a turn already running when the app starts is picked up at launch. If Antigravity dies mid-turn and writes nothing more, the ring goes out 10 minutes after its last write (`OPEN_TURN_MS`).
-- Sessions without hooks, plus Codex, Grok and OpenCode, fall back to "wrote to disk in the last 20 seconds" — so the ring can blink during a long think with no disk writes, and stays lit for up to 20s after a turn ends. Tune `WRITE_ACTIVE_MS` in `lib/activity.js`.
+- Codex and Grok write their own turn markers, and the ring follows them the same way. A Codex turn runs from `task_started` to `task_complete` (`turn_aborted` when you press stop). A Grok turn ends with `turn_completed` in `updates.jsonl`. After a turn only housekeeping follows (settings changes, recaps, hook runs), and the rule skips it. Every log on the author's machine was replayed line by line, about 217,000 points in 244 Codex rollouts and 2,066 in 19 Grok sessions, and the rule never called a running turn finished. The misses go the other way, and only in Codex builds from July and August 2026, which sometimes wrote more after `task_complete`. There the ring can stay on until the 10-minute cap, as it does when Codex or Grok dies mid-turn. Codex can write a single line of 5 MB (an image or a large tool output). A last line too big to read whole counts as mid-turn, because end markers are short lines.
+- Claude sessions without hooks, and OpenCode, fall back to "wrote to disk in the last 20 seconds". So the ring can blink during a long think with no disk writes, and it stays lit for up to 20s after a turn ends. Tune `WRITE_ACTIVE_MS` in `lib/activity.js`.
 - Every file event is re-checked against the file's mtime: a client renaming or migrating old session files also fires the watch, but the file itself is not new, so it does not count as running.
 - Antigravity and OpenCode keep their sessions in SQLite, and Antigravity creates and deletes its database's write-ahead files even while idle (opening and closing connections), which would blink the ring. So for Antigravity the ring follows the per-step transcript it appends only while a turn runs (`brain/<conversation>/.system_generated/logs/transcript.jsonl` under the IDE and CLI folders), and for OpenCode a change to `opencode.db-wal` — the app's own read-only opens never write that file. The OpenCode rule has not been measured on a real OpenCode session yet.
 
 Switching styles while nothing is running would show no difference, so a style change lights every ring for two seconds as a preview.
+
+### The tray icon
+
+The tray icon has one cell per tool the floating bar shows (tray menu → 悬浮条显示), in the bar's order. One tool fills the icon, two or three sit side by side, four make a 2×2 grid read left to right and then top to bottom, and five are three over two. Each cell shows:
+
+| Colour | Meaning |
+| --- | --- |
+| Gray | Idle |
+| Blue | Running |
+| Green | Finished a turn you haven't looked at yet |
+| Red | Needs you (a Claude permission prompt, with the hooks installed) |
+
+The icon follows the same watch as the activity ring, so it changes within a second instead of waiting for the 30-second refresh. A cell stays blue for the ring's 20-second write window after a turn ends, so green appears about 20 seconds after the answer. A green cell turns gray again in any of these cases:
+
+- You open or close the panel: click the tray icon or the floating bar to open it, and it closes when you click again or move the mouse away.
+- That tool starts running again.
+- 10 minutes have passed since the turn ended (`DONE_MS` in `lib/tray-icon.js`).
+
+Turns that ended before the app started don't count.
+
+Green needs a reliable sign that a turn is over. Claude with the hooks installed has one (the Stop hook), and so do Codex, Grok and Antigravity. Claude without hooks and OpenCode go straight from blue back to gray.
+
+Hover over the icon for one line per cell, in the same order, with its state and the quota windows the floating bar shows. Windows shows at most 127 characters there, so amounts and token counts stay in the panel. Four tools always fit; with five, if the lines would still run past the limit, the quota is left out so that every cell keeps its line.
 
 ### Enabling hooks (optional)
 
@@ -371,7 +400,7 @@ Price fixes don't need a release — see [Updating the price table](#updating-th
 - Bedrock's own pricing for retired models is not modeled.
 - Codex fast mode (`service_tier: "priority"`, 2x the standard price, 2.5x on gpt-5.5) is not modeled; those turns show the standard price.
 - Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
-- Antigravity's quota shows only once Antigravity has run since the app started (it is not stored on disk), and the `agy` CLI on its own does not provide it. OpenCode has no quota display. Neither has a click-to-open link or per-account tracking, and the tray tooltip stays on Claude, Codex and Grok.
+- Antigravity's quota shows only once Antigravity has run since the app started (it is not stored on disk), and the `agy` CLI on its own does not provide it. OpenCode has no quota display. Neither has a click-to-open link or per-account tracking.
 - An Antigravity turn is dated by its own timestamp or, on newer builds that stopped writing one, by the matching step; a turn with neither falls back to the conversation's start time. That never happened on the databases checked so far.
 - The first refresh after launch, and the first report over a longer range, still read every file in range once (about 3 seconds for 30 days of the author's history); only later reads are incremental. Nothing is cached on disk.
 

@@ -23,6 +23,7 @@ const { DEFAULT_ANTIGRAVITY_HOME } = require('./lib/antigravity-usage');
 const { defaultDbPath: openCodeDbPath } = require('./lib/opencode-usage');
 const { PROVIDERS, PROVIDER_IDS } = require('./lib/report');
 const { savedPick, shownProviders, toggledPick } = require('./lib/floating-providers');
+const { trayCells, trayBitmap, trayToolTip } = require('./lib/tray-icon');
 const { createAntigravityQuota } = require('./lib/antigravity-quota');
 const { dayKey, normalizeRangeDays, rangeBounds } = require('./lib/range');
 const { detectIdentities } = require('./lib/account-identity');
@@ -113,6 +114,9 @@ const DEFAULT_SETTINGS = {
 const REPORT_SIZE = { width: 1120, height: 780, minWidth: 760, minHeight: 540 };
 const LOGIN_ITEM_PATH = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
 let tray = null;
+let trayImageKey = '';
+let trayDoneTimer = null;
+let traySeenAt = Date.now();
 let panelWin = null;
 let floatingWin = null;
 let reportWin = null;
@@ -198,9 +202,6 @@ if (!app.requestSingleInstanceLock()) {
   return;
 }
 
-const fmtTokens = (n) =>
-  n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n);
-
 function isClaudeDesktopRunning() {
   if (process.platform !== 'win32') return false;
   try {
@@ -259,12 +260,6 @@ async function readClaudeDesktopConversation() {
   } finally {
     cleanupDesktopSnapshot(snapshotRoot, tempRoot);
   }
-}
-
-function costText(usage) {
-  if (usage.costCoverage === 'unavailable') return '\u91d1\u989d\u4e0d\u53ef\u7528';
-  const incomplete = usage.costCoverage === 'partial' || (usage.unknownModels || []).length > 0;
-  return `\u2248$${usage.costUSD.toFixed(2)}${incomplete ? '+' : ''}`;
 }
 
 function settingsPath() {
@@ -855,33 +850,26 @@ async function collectAllUsage() {
   return snapshot;
 }
 
-// 16x16 clay-colored square drawn as raw BGRA — no binary icon asset needed.
-function trayIcon(state = 'idle') {
-  const [b, g, r] =
-    {
-      working: [0x6e, 0xaf, 0x4c],
-      attention: [0x58, 0x58, 0xe4],
-      idle: [0x57, 0x77, 0xd9],
-    }[state] || [0x57, 0x77, 0xd9];
-  const size = 16;
-  const buf = Buffer.alloc(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const inside = x >= 1 && x <= 14 && y >= 1 && y <= 14;
-      const corner =
-        (x <= 2 || x >= 13) &&
-        (y <= 2 || y >= 13) &&
-        ((x <= 1 || x >= 14) || (y <= 1 || y >= 14));
-      const i = (y * size + x) * 4;
-      if (inside && !corner) {
-        buf[i] = b;
-        buf[i + 1] = g;
-        buf[i + 2] = r;
-        buf[i + 3] = 0xff;
-      }
-    }
+// Drawn as raw BGRA (lib/tray-icon.js) — no binary icon asset needed.
+const trayImage = (cells) => nativeImage.createFromBitmap(trayBitmap(cells), { width: 16, height: 16 });
+
+// One cell per floating-bar tool, from the activity watch rather than the 30 s snapshot: the icon
+// used to follow the snapshot and a 2-minute write window, trailing the ring by up to two and a
+// half minutes. A turn that ended before launch, or before the panel last opened or closed, is not news.
+function updateTrayIcon() {
+  if (!tray) return;
+  const providers = floatingProviders();
+  const turns = activityWatch ? activityWatch.turns() : {};
+  const { cells, expiresAt } = trayCells({ providers, activity, ...turns, seenAt: traySeenAt, now: Date.now() });
+  const key = `${providers}|${cells}`;
+  if (key !== trayImageKey) {
+    tray.setImage(trayImage(cells));
+    trayImageKey = key;
   }
-  return nativeImage.createFromBitmap(buf, { width: size, height: size });
+  tray.setToolTip(trayToolTip(providers, cells, usageSnapshot));
+  clearTimeout(trayDoneTimer);
+  // a green cell turns gray by itself after DONE_MS, with no event to wake us
+  trayDoneTimer = Number.isFinite(expiresAt) ? setTimeout(() => updateTrayIcon(), expiresAt - Date.now() + 100) : null;
 }
 
 function createPanelWindow() {
@@ -908,6 +896,25 @@ function createPanelWindow() {
       panelWin.hide();
     }
   });
+  // Showing the panel counts as having looked, and so does hiding it: a turn can end while it is
+  // open. On the window's own events because five paths hide it — mostly the renderer closing it
+  // 300 ms after the mouse leaves, but also opening a session or the report (Fable review).
+  // Electron 43 fires 'show'/'hide' on every call, even when nothing changes (measured): the
+  // auto-close follows a tray click that already hid the panel, and opening a session hides it
+  // after the app launches. Only a real change counts, or a turn ending in between goes unseen.
+  let shown = false;
+  const seen = (visible) => () => {
+    if (visible === shown) return;
+    shown = visible;
+    traySeenAt = Date.now();
+    updateTrayIcon();
+  };
+  panelWin.on('show', seen(true));
+  panelWin.on('hide', seen(false));
+  // Win+D can minimize the panel: that fires only 'minimize', and bringing it back fires 'restore'
+  // (then 'show' when a tray click does it). Without these, `shown` stays true and the reopen is missed.
+  panelWin.on('minimize', seen(false));
+  panelWin.on('restore', seen(true));
 }
 
 function floatingProviders() {
@@ -1068,11 +1075,10 @@ function togglePanel(anchor = 'tray') {
   panelWin.focus();
 }
 
+// The 30 s snapshot's part of the tray: permission-prompt notifications and the tooltip's quota numbers.
 function updateTray(snapshot) {
   if (!tray) return;
-  const { claude, codex, grok } = snapshot;
-  const working = PROVIDER_IDS.flatMap((id) => snapshot[id].sessions).filter((session) => session.state === 'working').length;
-  const attention = claude.sessions.filter((session) => session.state === 'attention');
+  const attention = snapshot.claude.sessions.filter((session) => session.state === 'attention');
   const nextAttention = new Set(attention.map((session) => session.sessionId));
   if (Notification.isSupported()) {
     for (const session of attention) {
@@ -1085,35 +1091,7 @@ function updateTray(snapshot) {
     }
   }
   attentionSessions = nextAttention;
-  tray.setImage(trayIcon(attention.length ? 'attention' : working ? 'working' : 'idle'));
-  const claudeActive = claude.sessions.some((session) =>
-    ['working', 'attention'].includes(session.state),
-  );
-  const states = [
-    attention.length && `${attention.length} \u4e2a\u9700\u5904\u7406`,
-    working && `${working} \u4e2a\u5de5\u4f5c\u4e2d`,
-    claude.appRunning && !claudeActive && 'Claude Desktop \u5df2\u6253\u5f00',
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const claudeWindows = claude.rateLimits;
-  const codexWindows = (codex.rateLimits && codex.rateLimits.windows) || [];
-  const grokWindows = (grok.rateLimits && grok.rateLimits.windows) || [];
-  const rangeLabel = (usage) => usage.rangeDays === 1 ? '今日' : `${usage.rangeDays}天`;
-  const windowText = (label, value) => (value ? ` · ${label} ${Math.round(value.usedPercentage)}%` : '');
-  tray.setToolTip(
-    `Claude (${rangeLabel(claude)}): ${fmtTokens(claude.totals.output)} out \u00b7 ${costText(claude)}` +
-      windowText('5h', claudeWindows && claudeWindows.fiveHour) +
-      windowText('7d', claudeWindows && claudeWindows.sevenDay) +
-      windowText('Fable', claudeWindows && claudeWindows.sevenDayFable) +
-      `\nCodex (${rangeLabel(codex)}): ${fmtTokens(codex.totals.output)} out · ≈$${codex.costUSD.toFixed(2)}` +
-      windowText('5h', codexWindows.find((value) => value.windowMinutes === 300)) +
-      windowText('7d', codexWindows.find((value) => value.windowMinutes === 10080)) +
-      `
-Grok (${rangeLabel(grok)}): ${fmtTokens(grok.totals.output)} out · ≈$${grok.costUSD.toFixed(2)}` +
-      windowText('7d', grokWindows.find((value) => value.windowMinutes === 10080)) +
-      (states ? ` · ${states}` : ''),
-  );
+  updateTrayIcon();
 }
 
 function publishUsage(snapshot) {
@@ -1213,6 +1191,7 @@ function setFloatingProviders(list) {
   saveSettings();
   sendFloatingState();
   updateTrayMenu();
+  updateTrayIcon(); // the icon has one cell per tool the bar shows
 }
 
 function toggleFloatingProvider(id, shown) {
@@ -1423,6 +1402,7 @@ isClaudeDesktopRunning = guard('tasklist', isClaudeDesktopRunning);
 regRunQuery = guard('registry', regRunQuery);
 setAutoLaunch = guard('registry', setAutoLaunch);
 updateTray = guard('tray', updateTray);
+updateTrayIcon = guard('tray', updateTrayIcon);
 updateTrayMenu = guard('tray', updateTrayMenu);
 keepWindowOnTop = guard('window', keepWindowOnTop);
 updateFloatingVisibility = guard('window', updateFloatingVisibility);
@@ -1442,7 +1422,7 @@ app.whenReady().then(() => {
   createFloatingWindow();
   syncFullscreenWatch();
   syncAutoLaunch();
-  tray = new Tray(trayIcon());
+  tray = new Tray(trayImage(floatingProviders().map(() => 'idle')));
   updateTrayMenu();
   tray.on('click', () => togglePanel('tray'));
   screen.on('display-metrics-changed', () => {
@@ -1459,9 +1439,11 @@ app.whenReady().then(() => {
       if (floatingWin && !floatingWin.isDestroyed()) {
         floatingWin.webContents.send('floating-activity', activity);
       }
+      updateTrayIcon();
     },
   });
   activity = activityWatch.current();
+  updateTrayIcon();
   refreshUsage();
   setInterval(refreshUsage, 30_000);
   // 每小时看一眼、一天只成功拉一次:开机自启时 10 秒后网络常常还没连上,失败了不该等一整天。
