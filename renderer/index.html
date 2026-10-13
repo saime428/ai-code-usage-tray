@@ -472,6 +472,10 @@
         usage.dataStatus?.state !== 'ok' ? usage.dataStatus.message : '',
         accountUsage.error || '',
         usage.rateLimits?.stale ? '额度数据已超过 15 分钟未更新' : '',
+        // Codex 的额度从一周内写过的会话里读:走第三方 provider 或者几天没用时,窗口上的数是旧的,得说出来
+        selected === 'codex' && limits.length && Date.now() - usage.rateLimits.updatedAt > 24 * 3600 * 1000
+          ? `额度是 Codex 在 ${new Date(usage.rateLimits.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 写下的，之后没有新的额度数据`
+          : '',
         isClaude && usage.rateLimits?.source === 'desktop' ? '≈ 重置时间由 Claude Desktop 本地采样推算，约有 5 分钟误差' : '',
       ].filter(Boolean);
       document.getElementById('note').innerHTML =

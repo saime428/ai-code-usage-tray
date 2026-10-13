@@ -80,7 +80,10 @@ function printToday() {
     if (credits) {
       shown.push(`credits=${credits.unlimited ? 'unlimited' : credits.balance ? Math.round(credits.balance).toLocaleString('en-US') : 'available'}`);
     }
-    if (shown.length) console.log(`Limits  ${shown.join('  ')}${u.rateLimits.planType ? `  (${u.rateLimits.planType})` : ''}`);
+    // Limits read from disk can be days old: Codex's come from rollouts written up to a week ago
+    // (lib/codex-usage.js LIMITS_LOOKBACK_MS).
+    const days = u.rateLimits ? Math.floor((Date.now() - u.rateLimits.updatedAt) / 86400000) : 0;
+    if (shown.length) console.log(`Limits  ${shown.join('  ')}${u.rateLimits.planType ? `  (${u.rateLimits.planType})` : ''}${days >= 1 ? `  written ${days}d ago` : ''}`);
     console.log(`\nSessions in last 24h: ${u.sessions.length}`);
     for (const s of u.sessions.slice(0, 10)) {
       const mins = Math.round((Date.now() - s.mtime) / 60000);

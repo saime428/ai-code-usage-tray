@@ -200,6 +200,8 @@ Windows PowerShell 5.1 的 `>` 默认写成 UTF-16；在那里改用 `| Out-File
 
 Microsoft Store 版 Claude Desktop 会自动读取 `%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/` 下的同名数据文件。
 
+Codex 每次调用模型后都会把额度写进会话文件，但这些快照并不都是在说你的套餐。有的写的是某个型号专属的桶（GPT-5.3-Codex-Spark 的限额，出现在从没用过这个型号的会话里），或者一个叫 `premium`、根本没有窗口的桶；响应里没带 Codex 的额度头时，留下的是一条没有窗口的快照——作者的会话里，走第三方 provider 的调用全是这样。应用显示的是套餐自己那个桶里最新一条带窗口的快照，从最近 7 天内写过的会话文件里找，和面板选的天数无关；窗口过了重置时间就不再显示，只有点数的快照，要等没有窗口还在生效、而且点数状态和手上那条不一样时才算数。所以连着几天走别的 provider、或者几天没用 Codex 之后，5h / 7d 上的数是套餐最后一次报出来的数。悬浮条展开的卡片上写着它是多久以前的，超过一天时面板底部和 `npm run usage` 会多一句说明；收起的悬浮条和托盘提示只显示数字。
+
 Antigravity 和 OpenCode 用的是 SQLite 数据库，应用只读方式打开、而且只在文件有变化时才打开，不会挡住正在写库的工具。Antigravity 的 token 记在 protobuf 记录里，字段号来自 [TokenMe](https://github.com/Bencibr/tokenme)（MIT）的逆向结果，并在这里用真实数据库重新核对过；老的 `antigravity-ide`、`antigravity-backup` 目录里是同一批会话的副本，所以按会话和响应 id 合并，而不是相加。
 
 Antigravity 不把额度写到硬盘上，只有正在运行的语言服务手里有，它通过一个本机接口把设置 → Models 页面上的那几个数提供给自己的界面。Antigravity 开着的时候，应用找到这个服务（Antigravity 安装目录里的 `language_server.exe`），从它的启动参数里取访问令牌、从系统的端口表里取端口，在 127.0.0.1 上向它查询——[TokenMe](https://github.com/Bencibr/tokenme) 和 [CodexBar](https://github.com/steipete/CodexBar) 在 macOS 上用的也是这个接口。这个服务缓存的数不会跟着用量变（实测发了两条消息后还是老数），所以本机 Antigravity 有新用量、某个窗口过了重置时间、以及每 10 分钟，应用会让它向 Google 刷新一次，其余时候沿用上一次的结果。Antigravity 关掉后保留最后一次的数，标出是多久前的，超过 15 分钟变暗。只装了 `agy` 命令行时读不到额度：向它要额度得用它自己的登录，可能会弹出浏览器。
@@ -445,6 +447,7 @@ git status --short
 - Bedrock 对退役型号的另一套定价没有建模。
 - Codex 的快速模式（`service_tier: "priority"`，官方价为标准价的 2x，gpt-5.5 为 2.5x）没有建模，这些回合按标准价显示。
 - Codex 的点数余额是 Codex 最后一次写进会话文件的那个数，旁边标着那次的时间：之后在别处（网页、另一台电脑）花掉的点数，要等 Codex 在本机再运行才会反映出来。工作区的每月点数上限（`individual_limit`）没有显示——作者的会话里没有一条带这个字段，无从核对。
+- Codex 按型号单列的限额没有显示，只显示套餐自己的 5h / 7d 窗口和点数余额——用的型号如果有自己单独的限额，看到的仍是套餐的数，不是那个型号的。Codex 的 `/status` 会把 GPT-5.3-Codex-Spark 这类型号单独列一组，但会话文件里这个桶只是碰巧被写进去过（出现在没用过该型号的会话里，数值 0–2%），2026 年 7 月之后再没出现。另外，Codex 的额度只在本机有调用走 ChatGPT 套餐时才会变：走第三方 provider 的调用不带额度。
 - 没有公开牌价的型号（如 `codex-auto-review`）会被排除在合计之外并标出，不做估算。
 - Antigravity 的额度要在本应用启动后 Antigravity 运行过才有（它不存盘），只装了 `agy` 命令行时也读不到。OpenCode 没有额度显示。两家都没有点击跳转和分账号统计。
 - Antigravity 的每一轮按它自己的时间戳定日期；新版本不再写这个时间戳，就用对应 step 的时间；两者都没有时退回到会话开始时间。目前核对过的数据库里还没出现过这种情况。

@@ -322,7 +322,11 @@
       if (!Number.isFinite(updatedAt)) return '额度数据正常';
       const minutes = Math.max(0, Math.round((Date.now() - updatedAt) / 60000));
       if (usage.rateLimits.source === 'desktop') return minutes < 1 ? 'Desktop 刚刚采样' : `Desktop ${minutes} 分钟前采样`;
-      return minutes < 1 ? '刚刚更新' : `${minutes} 分钟前更新`;
+      // Codex 的额度从一周内写过的会话里读,几天没用时这个数就是几天前的
+      return minutes < 1 ? '刚刚更新'
+        : minutes < 120 ? `${minutes} 分钟前更新`
+        : minutes < 2880 ? `${Math.round(minutes / 60)} 小时前更新`
+        : `${Math.round(minutes / 1440)} 天前更新`;
     };
     const resetText = (value) => value.resetsAt
       ? `${value.resetEstimated ? '≈ ' : ''}${new Date(value.resetsAt * 1000).toLocaleString('zh-CN', {
