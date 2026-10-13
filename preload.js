@@ -34,4 +34,5 @@ contextBridge.exposeInMainWorld('api', {
   closePanel: () => ipcRenderer.send('close-panel'),
   openReport: () => ipcRenderer.send('open-report'),
   getReport: (days) => ipcRenderer.invoke('report', days),
+  exportReport: (days, providers) => ipcRenderer.invoke('report-export', days, providers),
 });

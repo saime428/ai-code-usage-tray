@@ -32,9 +32,9 @@
 | | |
 | --- | --- |
 | **五个工具一处查看** | Claude Code、Claude Desktop、Codex CLI/Desktop、Grok CLI、Antigravity（IDE 和 CLI）和 OpenCode 放在同一面板。Antigravity、OpenCode 的页签在本机有数据时才出现。 |
-| **用量报表** | 一个可调大小的报表窗口，覆盖所有工具：日趋势、时段分布、按工具、按项目、最贵的会话和按模型，并和上一周期对比。命令行也能看。 |
+| **用量报表** | 一个可调大小的报表窗口，覆盖所有工具：日趋势、时段分布、按工具、按项目、最贵的会话和按模型，并和上一周期对比。可以导出 CSV，命令行也能看。 |
 | **独立日期范围** | 每个来源可以各自选最近 1–90 天，互不影响。 |
-| **额度窗口** | 显示 5h / 7d 使用比例、重置时间和数据更新时间。连上 Claude 账户后，有数据也会显示 Fable 窗口；Antigravity 开着时，也显示它的 Gemini 和 Claude/GPT 额度。 |
+| **额度窗口** | 显示 5h / 7d 使用比例、重置时间和数据更新时间。连上 Claude 账户后，有数据也会显示 Fable 窗口；Antigravity 开着时，也显示它的 Gemini 和 Claude/GPT 额度。Codex 账号有点数时显示余额。 |
 | **分账号用量** | 从本机启用分账号统计后，按当前账号累计 Token，更早的记录不计在内。账本由 Windows 加密保存在本地。 |
 | **会话状态** | 区分工作中、需处理和空闲。Desktop 会话可以从面板打开。 |
 | **任务流光环** | 有会话在跑时，悬浮条上那一家会绕一圈流动的光；监听会话目录的写入，不等 30 秒刷新。样式可换成彩虹或关掉。 |
@@ -143,7 +143,7 @@
 | 按工具 / 按时段 | 每个工具的金额、占比、Token、缓存命中率、请求和会话数；以及一天里几点用得最多。 |
 | 按项目 | 按工作目录把各工具的会话合在一起（`C:\x` 和 `c:/x/` 算同一个项目），Claude Code 的 worktree（`<仓库>\.claude\worktrees\<名字>`）归回所在仓库。 |
 | 最贵的会话 | 标题、项目、客户端、金额、Token、请求数、最后活动时间。子代理的用量、resume 或 fork 复制过去的历史，都算在真正跑它的那个会话上。 |
-| 按模型 | 每个模型的请求、输入、缓存读、输出和金额；没有价格的模型会标出来。 |
+| 按模型 | 每个模型的请求、输入、缓存读、输出和金额；没有价格的模型会标出来。Antigravity 给同一个模型分出的实验组（`gemini-3.8-flash-n`、`gemini-3.7-flash-control`）合成一行，记在模型名下。 |
 
 合计金额是不同口径直接相加的——Claude、Codex、Antigravity 是 API 等价值，Grok 是官方结算，OpenCode 是它自己记下的金额——报表底部会写明。Token 先换算到同一尺度再加：Codex 和 Grok 的输入里已经含缓存读，另外三家是分开记的。90 天范围不做环比，因为那要读半年的记录。
 
@@ -154,6 +154,35 @@ npm run usage -- --days 30                  # 按工具和按天
 npm run usage -- --days 7 --by project      # 或者 tool、day、hour、model、project、session
 ```
 
+### 导出 CSV
+
+筛选那一行最右边的「导出 CSV」按钮，把当前显示的范围、当前勾选的工具存成一个文件，位置由你选（默认建议 `文档\ai-code-usage-<第一天>_<最后一天>.csv`，只有一天时是 `ai-code-usage-<那一天>.csv`）。每个本地日期 × 工具 × 模型一行：
+
+| 列 | 含义 |
+| --- | --- |
+| `date` | 本机时区的日期，`YYYY-MM-DD`。 |
+| `tool` | Claude、Codex、Grok、Antigravity 或 OpenCode。 |
+| `model` | 模型 id，和报表里显示的一致。 |
+| `requests` | Claude、Antigravity、OpenCode 是 API 请求数；Codex 和 Grok 是轮次。 |
+| `input_tokens` | 既没有读缓存、也没有写缓存的那部分输入。 |
+| `cache_read_tokens`、`cache_write_tokens` | 缓存部分的输入，每家都和 `input_tokens` 分开列——Codex 和 Grok 自己的输入数里含缓存，导出时已经减掉。 |
+| `output_tokens` | 输出，含推理。 |
+| `reasoning_tokens` | `output_tokens` 里属于推理的部分，不是额外的量。 |
+| `total_tokens` | `input_tokens + cache_read_tokens + cache_write_tokens + output_tokens`，就是报表里的 Token 数。 |
+| `cost_usd` | 金额（美元），保留六位小数。 |
+| `cost_basis` | 这个金额的口径：`api`（标准 API 等价值）、`billed`（Grok CLI 记录的官方结算）或 `recorded`（OpenCode 自己记下的）。 |
+| `priced` | 价格表里没有这个模型时为 `no`：token 照常计数，`cost_usd` 为 0。 |
+
+文件是带 BOM 的 UTF-8、CRLF 换行，Excel 可以直接打开。同一范围下，每个工具各行相加等于报表里该工具那一行。模型名如果会被表格软件当成公式执行（以 `=`、`+`、`-`、`@` 开头），前面会加一个单引号。导出时报 `EBUSY`，说明上一次导出的文件还在 Excel 里开着：关掉再导出。导出失败的提示单独占筛选下面的一行，一直留到下一次导出。
+
+命令行可以导出同样的内容，包含全部工具，是不带 BOM 的 UTF-8（`-s` 用来去掉 npm 自己打印的两行）：
+
+```powershell
+npm run -s usage -- --days 30 --csv > usage.csv
+```
+
+Windows PowerShell 5.1 的 `>` 默认写成 UTF-16；在那里改用 `| Out-File -Encoding utf8 usage.csv`，或者在 `cmd`、PowerShell 7 里运行。
+
 ## 数据从哪里来
 
 | 客户端 | 本地来源 | 可提供的数据 |
@@ -163,7 +192,7 @@ npm run usage -- --days 7 --by project      # 或者 tool、day、hour、model�
 | Claude Desktop | `%APPDATA%/Claude/claude-code-sessions/**/*.json` | Claude Code / Cowork 标题、客户端类型、最近活动 |
 | Claude Desktop Home | `%APPDATA%/Claude/IndexedDB/` | 普通聊天的标题、模型、消息数、最近活动（无 token 明细） |
 | Claude 账户（可选） | Anthropic OAuth 用量接口 | 官方百分比与精确重置时间 |
-| Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | token、额度窗口、模型、会话活动 |
+| Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | token、额度窗口、点数余额、模型、会话活动 |
 | Grok CLI | `~/.grok/sessions/**/updates.jsonl` + `~/.grok/logs/unified.jsonl` | 逐轮 token、官方结算金额、订阅周额度、会话活动 |
 | Antigravity（IDE 和 `agy` CLI） | `~/.gemini/antigravity*/conversations/*.db` + `conversation_summaries.db` | 逐轮 token 和模型、标题、工作目录、会话活动 |
 | Antigravity 额度 | 正在运行的 Antigravity 语言服务，通过它在 127.0.0.1 上的本机接口 | Gemini 和 Claude/GPT 两组的 5 小时、每周额度和重置时间 |
@@ -183,7 +212,7 @@ Claude / Codex / Antigravity 的金额来自一张手工维护的官方标准 AP
 - Claude Haiku 5.5 按提示长度分档：一次请求的提示（输入、缓存读取和缓存写入）超过 10 万 token 时，整次请求按 5 倍计价，输出也算在内。每次请求单独判断。
 - Opus 5.5 / 5 / 4.8 的快速模式（2x）和 `inference_geo: "us"`（1.1x），逐条从转录里读。
 - Codex 长上下文（输入超过 272K：输入 2x、输出 1.5x）。
-- Gemini 的上下文缓存价，以及 Pro 型号在提示超过 200K 时的长上下文档位。Antigravity 发来的是 `gemini-3.7-flash-control`、`gemini-3-flash-a` 这类实验 id，按最长前缀规则算成对应型号的价；Antigravity 里用的 Claude 模型按 `claude` 一节计价。
+- Gemini 的上下文缓存价，以及 Pro 型号在提示超过 200K 时的长上下文档位。Antigravity 发来的是 `gemini-3.7-flash-control`、`gemini-3-flash-a` 这类实验 id，按最长前缀规则算成对应型号的价，显示时也记在该型号名下。只合并这一种形状：型号 id 后面跟 `-control` 或单个字母。其他后缀（`-preview`、`-thinking`）仍然单独一行，这样借用了较短邻居价格的型号不会被藏起来。Antigravity 里用的 Claude 模型按 `claude` 一节计价。
 - Bedrock / Vertex 形式的模型 id（`us.anthropic.…`、`名称@日期`），区域配置按官方口径加 10%，`global.` 不加。
 - 退役型号仍保留，旧转录照样能算。
 
@@ -293,6 +322,21 @@ Grok 和 OpenCode 不需要价格表：Grok 的金额是 Grok CLI 记下的结�
 
 `report-status.js` 把每个会话的状态写到 `~/.claude/usage-tray-status/`，永远快速退出，不会拖慢 Claude Code。`report-rate-limits.js` 占用 statusLine 槽位捕获官方额度，不输出任何内容。Claude Code 只有一个 statusLine 槽位——如果你已经在用别的 statusLine，保留你自己的并跳过这部分即可，会话状态不依赖它。新会话会自动生效。
 
+<a id="reporting-a-problem"></a>
+## 反馈问题
+
+右键托盘图标，选「复制诊断信息」，然后粘贴到 [issue](https://github.com/saime428/ai-code-usage-tray/issues) 里。它往剪贴板放几十行纯文本，不向任何地方发送，粘贴前可以先看一遍。
+
+| 包含 | 不包含 |
+| --- | --- |
+| 应用版本和类型（安装版、便携版、开发版）、Electron、Windows 版本、语言、主屏分辨率和缩放 | 会话标题、项目名和工作目录 |
+| 托盘菜单里的各项设置、价格表日期以及它是不是下载来的 | 账号名、邮箱，以及分账号账本里的任何内容 |
+| 每个工具：数据目录在不在、上一次读取的情况、面板当前范围的请求数和金额、各状态的会话数量、额度数字及其更新时间、没有价格的模型 | 令牌、凭据、提示词和回复 |
+| Codex 的登录方式；Claude 账户连没连，以及它上一次额度请求的状态、错误说明和时间 | 你的用户名：主目录写成 `~` |
+| 挂起记录的最后八条，其中只列出输入法相关进程的名字 | 挂起记录里其他进程的名字（只给数量） |
+
+主目录以外的路径会原样写出，比如应用自己所在的位置，或者用 `XDG_DATA_HOME` 挪走的 OpenCode 数据。如果便携版放在一个你不想公开名字的文件夹里，粘贴前把那一行改掉。
+
 ## 应用未响应时
 
 再打开一次即可。新实例会先结束 Windows 判定为「未响应」的同名进程再接管；万一还是打不开，到任务管理器里结束它。
@@ -318,6 +362,8 @@ Grok 和 OpenCode 不需要价格表：Grok 的金额是 Grok CLI 记下的结�
 - OAuth 登录是可选项。网络不通或碰到 Anthropic 限流时，本地用量监控照常工作。
 - 挂起记录 `hang-log.jsonl` 只保存在本机，里面只有时间、步骤名、进程名和启动时间，没有用量数据或会话内容。
 - `claude-oauth-throttle.json` 只记录上一次账户额度请求的状态码和时间，让限流等待期在重启后仍然生效，不含令牌。
+- 「复制诊断信息」只写剪贴板，而且只在你点它的时候。包含哪些内容见[反馈问题](#reporting-a-problem)。
+- 导出的 CSV 只写到你选的位置，里面是日期、工具和模型名、token 数和金额，没有会话名和项目名。
 - 完整说明见 [Privacy Policy](PRIVACY.md)。
 
 ## Code signing policy
@@ -337,7 +383,7 @@ cd ai-code-usage-tray
 npm ci
 npm test
 npm start
-npm run usage   # 终端打印今日用量，不启动 Electron（加 -- --days 30 看报表）
+npm run usage   # 终端打印今日用量，不启动 Electron（加 -- --days 30 看报表，再加 --csv 导出）
 npm run check-prices   # 把价格表和厂商官方页、LiteLLM 比对
 ```
 
@@ -361,12 +407,13 @@ lib/antigravity-usage.js  Antigravity 会话数据库（protobuf 解码）与 Ge
 lib/antigravity-quota.js  从正在运行的 Antigravity 语言服务读取额度
 lib/opencode-usage.js   OpenCode 的 SQLite 数据库
 lib/jsonl.js            从上次读到的位置接着读的逐行读取器
-lib/report.js           共用的按小时数据行、面板汇总和跨工具报表
+lib/report.js           共用的按小时数据行、面板汇总、跨工具报表及其 CSV 导出
 lib/usage-worker.js     在主进程之外跑以上所有统计的 worker 线程
 lib/prices.json         Claude / Codex / Gemini 价格表（应用也会从 main 下载它）
 lib/prices.js           价格表校验，以及下载它的地址
 lib/claude-oauth.js     可选 Claude OAuth / PKCE
 lib/hang-guard.js       挂起记录看门狗与未响应实例查找
+lib/diagnostics.js      托盘菜单「复制诊断信息」背后的那段文字
 renderer/index.html     完整面板
 renderer/report.html    用量报表窗口
 lib/activity.js         流光环的活动监听（会话目录写入 + hook 状态）
@@ -397,6 +444,7 @@ git status --short
 - Grok 周额度来自 Grok CLI 落盘的日志：新计费周期开始后，要等你下次运行 Grok CLI 才会刷新出来（本机实测滞后 2–57 小时）。这段时间额度不显示——周额度是账号级的，你可能在网页版用掉了一部分，猜一个数不如不显示。
 - Bedrock 对退役型号的另一套定价没有建模。
 - Codex 的快速模式（`service_tier: "priority"`，官方价为标准价的 2x，gpt-5.5 为 2.5x）没有建模，这些回合按标准价显示。
+- Codex 的点数余额是 Codex 最后一次写进会话文件的那个数，旁边标着那次的时间：之后在别处（网页、另一台电脑）花掉的点数，要等 Codex 在本机再运行才会反映出来。工作区的每月点数上限（`individual_limit`）没有显示——作者的会话里没有一条带这个字段，无从核对。
 - 没有公开牌价的型号（如 `codex-auto-review`）会被排除在合计之外并标出，不做估算。
 - Antigravity 的额度要在本应用启动后 Antigravity 运行过才有（它不存盘），只装了 `agy` 命令行时也读不到。OpenCode 没有额度显示。两家都没有点击跳转和分账号统计。
 - Antigravity 的每一轮按它自己的时间戳定日期；新版本不再写这个时间戳，就用对应 step 的时间；两者都没有时退回到会话开始时间。目前核对过的数据库里还没出现过这种情况。
@@ -404,7 +452,7 @@ git status --short
 
 ## 贡献
 
-Issue 和 Pull Request 都欢迎。提交前请运行：
+Issue 和 Pull Request 都欢迎。反馈 bug 时请贴上托盘菜单「复制诊断信息」得到的文字，见[反馈问题](#reporting-a-problem)。提交 Pull Request 前请运行：
 
 ```powershell
 npm test

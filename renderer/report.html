@@ -58,6 +58,7 @@
     }
     .seg:hover, .chip:hover { border-color: #4a4a54; color: var(--text); }
     .seg[aria-pressed='true'] { border-color: #5a5a66; background: var(--raised); color: var(--text); }
+    .seg:disabled { opacity: .6; cursor: default; }
     .chip { display: inline-flex; align-items: center; gap: 6px; }
     .chip i { width: 9px; height: 9px; border-radius: 2px; background: var(--key); }
     .chip[aria-pressed='false'] { color: var(--muted); }
@@ -65,6 +66,9 @@
     :focus-visible { outline: 2px solid #80aaff; outline-offset: 2px; }
     .status { margin-left: auto; color: var(--muted); font-size: 12px; }
     .status.error { color: var(--warn); }
+    /* A line of its own under the filters, so a long message never pushes the button around. */
+    .export-error { flex-basis: 100%; color: var(--warn); font-size: 12px; text-align: right; }
+    .export-error:empty { display: none; }
     #content { transition: opacity 160ms ease; }
     #content.loading { opacity: .55; }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
@@ -156,6 +160,8 @@
       </div>
       <div class="group" role="group" aria-label="工具" id="tool-filter"></div>
       <span class="status" id="status" role="status" aria-live="polite"></span>
+      <button type="button" class="seg" id="export" title="所选范围和工具，每天 × 工具 × 模型一行">导出 CSV</button>
+      <span class="export-error" id="export-error" role="alert"></span>
     </div>
 
     <div id="content">
@@ -568,10 +574,39 @@
       }
     }
 
+    // Exports what the window is showing: the chosen range and the tools left switched on.
+    // Success shows on the button for a few seconds. A failure gets its own line, which stays
+    // until the next export: the status line is rewritten by every 30-second refresh.
+    let exportLabelTimer;
+    async function exportCsv(button) {
+      const failure = document.getElementById('export-error');
+      const list = shown();
+      clearTimeout(exportLabelTimer); // the last answer's reset must not land on this one
+      failure.textContent = '';
+      // Nothing loaded yet, or every tool switched off: say which, rather than do nothing.
+      let label = list.length ? '导出 CSV' : state.report ? '没有可导出的工具' : '报表还没加载完';
+      if (list.length) {
+        button.disabled = true;
+        button.textContent = '导出中…';
+        try {
+          const result = await window.api.exportReport(state.days, list.map((p) => p.id));
+          if (result.saved) label = `已导出 ${count(result.lines)} 行`;
+          else if (result.empty) label = '范围内没有用量';
+        } catch (error) {
+          failure.textContent = String(error.message || '导出失败').replace(/^.*Error: /, '');
+        }
+        button.disabled = false;
+      }
+      button.textContent = label;
+      if (label !== '导出 CSV') exportLabelTimer = setTimeout(() => (button.textContent = '导出 CSV'), 4000);
+    }
+
     document.addEventListener('click', (event) => {
       const button = event.target.closest('button');
       if (!button) return;
-      if (button.dataset.days) {
+      if (button.id === 'export') {
+        exportCsv(button);
+      } else if (button.dataset.days) {
         state.days = Number(button.dataset.days);
         remember();
         renderFilters();

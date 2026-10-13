@@ -25,6 +25,8 @@ Optional Claude OAuth credentials are encrypted with Electron `safeStorage` and 
 
 If the application stops responding, a diagnostic log in the same directory records the time, the step that was running, and the names and start times of processes running at that moment. It stays on the local computer and is transferred only if the user chooses to attach it to a bug report.
 
+Two things leave the application only when the user asks for them, and go nowhere but the place the user picks. The tray menu item "复制诊断信息" (copy diagnostics) puts a text summary on the clipboard for pasting into a bug report: versions, settings, per-tool counts, quota figures and file locations, with the home directory written as `~` and without session titles, project names, account names or credentials. The usage report's "导出 CSV" (export CSV) button writes a file to the location the user chooses, holding dates, tool and model names, token counts and amounts.
+
 ## Deletion
 
 Installed builds are removed from Windows Settings → Apps; portable builds are removed by exiting the application and deleting the executable. Disconnect the Claude account first to remove its stored credentials; the application's local user-data directory may also be deleted to remove all preferences and cached state.

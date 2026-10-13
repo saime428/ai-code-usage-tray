@@ -7,16 +7,19 @@ const {
   ipcMain,
   nativeImage,
   Notification,
+  clipboard,
+  dialog,
   screen,
   shell,
   safeStorage,
   net,
 } = require('electron');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFile, execFileSync } = require('child_process');
 const { Worker } = require('worker_threads');
-const { DEFAULT_ROOT } = require('./lib/usage');
+const { DEFAULT_ROOT, DEFAULT_STATUS_DIR } = require('./lib/usage');
 const { DEFAULT_CODEX_ROOT } = require('./lib/codex-usage');
 const { DEFAULT_GROK_ROOT } = require('./lib/grok-usage');
 const { DEFAULT_ANTIGRAVITY_HOME } = require('./lib/antigravity-usage');
@@ -37,6 +40,7 @@ const { sessionTarget } = require('./lib/open-session');
 const { startFullscreenWatch } = require('./lib/fullscreen-watch');
 const { startActivityWatch, IDLE: IDLE_ACTIVITY } = require('./lib/activity');
 const { appendHangLog, parseTasklistPids, startHangWatch } = require('./lib/hang-guard');
+const { formatDiagnostics } = require('./lib/diagnostics');
 const { runValuePath, portableShouldYield } = require('./lib/auto-launch');
 const { BUNDLED: BUNDLED_PRICES, PRICES_URLS, acceptPrices } = require('./lib/prices');
 const {
@@ -401,6 +405,14 @@ function collectReport(days) {
   return new Promise((resolve, reject) => {
     usageWorkerRequests.set(id, { resolve, reject });
     ensureUsageWorker().postMessage({ id, kind: 'report', days, now: Date.now(), prices });
+  });
+}
+
+function collectExport(days, providers) {
+  const id = ++usageWorkerRequestId;
+  return new Promise((resolve, reject) => {
+    usageWorkerRequests.set(id, { resolve, reject });
+    ensureUsageWorker().postMessage({ id, kind: 'export', days, providers, now: Date.now(), prices });
   });
 }
 
@@ -1284,6 +1296,85 @@ function syncAutoLaunch() {
   setAutoLaunch(true);
 }
 
+// 托盘菜单「复制诊断信息」:版本、设置、每家的数据状态和额度、最近的挂起记录,整理成一段
+// 文字(lib/diagnostics.js)放进剪贴板,用户贴进 issue。不含会话标题、项目名、账号和令牌,
+// 主目录写成 ~。
+function readJsonFile(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function readHangLog() {
+  let text;
+  try {
+    text = fs.readFileSync(HANG_LOG, 'utf8');
+  } catch {
+    return [];
+  }
+  return text.split('\n').flatMap((line) => {
+    try {
+      return line ? [JSON.parse(line)] : [];
+    } catch {
+      return []; // 看门狗正写到一半的最后一行
+    }
+  });
+}
+
+function copyDiagnostics() {
+  const source = (target) => ({ path: target, exists: fs.existsSync(target) });
+  const { size, scaleFactor } = screen.getPrimaryDisplay();
+  const text = formatDiagnostics({
+    now: Date.now(),
+    // 两个都要:各家的数据目录是用 os.homedir()(读 USERPROFILE)拼的,而 Electron 的 home 不跟
+    // USERPROFILE 走。实测把 USERPROFILE 指到别处:前者跟过去,后者还是 C:\Users\<名字>
+    home: [os.homedir(), app.getPath('home')],
+    app: {
+      version: app.getVersion(),
+      kind: !app.isPackaged ? 'dev' : process.env.PORTABLE_EXECUTABLE_FILE ? 'portable' : 'installed',
+      exe: LOGIN_ITEM_PATH,
+      userData: app.getPath('userData'),
+      electron: process.versions.electron,
+      node: process.versions.node,
+      os: process.getSystemVersion(),
+      arch: process.arch,
+      locale: app.getLocale(),
+      uptimeSeconds: process.uptime(),
+      // 悬浮条的尺寸问题多半和缩放有关
+      display: `${size.width}x${size.height} scale ${scaleFactor}`,
+    },
+    settings,
+    floatingProviders: floatingProviders(),
+    autoLaunch: app.isPackaged ? autoLaunchEnabled() : null,
+    prices: {
+      snapshot: prices.snapshot,
+      source: prices === BUNDLED_PRICES ? 'bundled' : 'downloaded',
+      checkedAt: pricesCheckedAt,
+    },
+    workerRunning: Boolean(usageWorker),
+    snapshot: usageSnapshot,
+    sources: {
+      claude: [source(DEFAULT_ROOT), source(DEFAULT_STATUS_DIR)],
+      codex: [source(DEFAULT_CODEX_ROOT)],
+      grok: [source(path.join(DEFAULT_GROK_ROOT, 'sessions'))],
+      antigravity: [source(DEFAULT_ANTIGRAVITY_HOME)],
+      opencode: [source(openCodeDbPath())],
+    },
+    claudeAccount: { ...claudeAuthStatus(), throttle: readJsonFile(claudeOAuthThrottlePath()) },
+    activity,
+    hangLog: readHangLog(),
+  });
+  clipboard.writeText(text);
+  if (Notification.isSupported()) {
+    new Notification({
+      title: '诊断信息已复制',
+      body: '可以直接粘贴到 issue。不含会话标题、项目名和令牌，主目录写成 ~。',
+    }).show();
+  }
+}
+
 function quickMenuTemplate(includePaths) {
   const items = [
     { label: '打开完整面板', click: () => togglePanel(includePaths ? 'tray' : settings.floatingPosition) },
@@ -1375,6 +1466,8 @@ function quickMenuTemplate(includePaths) {
       { label: '打开 Grok 会话目录', click: () => shell.openPath(path.join(DEFAULT_GROK_ROOT, 'sessions')) },
       { label: '打开 Antigravity 数据目录', click: () => shell.openPath(DEFAULT_ANTIGRAVITY_HOME) },
       { label: '打开 OpenCode 数据目录', click: () => shell.openPath(path.dirname(openCodeDbPath())) },
+      { type: 'separator' },
+      { label: '复制诊断信息', click: copyDiagnostics },
     );
   }
   items.push(
@@ -1473,6 +1566,38 @@ ipcMain.handle('report', (event, days) => {
   const rangeDays = normalizeRangeDays(days, null);
   if (!rangeDays) throw new RangeError('报表天数必须是 1 到 90 的整数');
   return collectReport(rangeDays);
+});
+// The report's range and the tools it is showing, as a CSV the user picks a place for.
+ipcMain.handle('report-export', async (event, days, providers) => {
+  if (!reportWin || event.sender !== reportWin.webContents) throw new Error('无效的导出请求');
+  const rangeDays = normalizeRangeDays(days, null);
+  if (!rangeDays) throw new RangeError('报表天数必须是 1 到 90 的整数');
+  const ids = PROVIDER_IDS.filter((id) => Array.isArray(providers) && providers.includes(id));
+  if (!ids.length) throw new RangeError('没有可导出的工具');
+  // The window that asked, not whatever `reportWin` is once the worker answers: closed and
+  // reopened in between, the dialog for the old request used to open on the new window.
+  const win = reportWin;
+  const { startDay, endDay, lines, csv } = await collectExport(rangeDays, ids);
+  if (win.isDestroyed()) return { saved: false };
+  if (!lines) return { saved: false, empty: true };
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: '导出用量 CSV',
+    defaultPath: path.join(
+      app.getPath('documents'),
+      `ai-code-usage-${startDay}${endDay === startDay ? '' : `_${endDay}`}.csv`,
+    ),
+    filters: [{ name: 'CSV', extensions: ['csv'] }],
+  });
+  if (canceled || !filePath) return { saved: false };
+  try {
+    // The BOM is what makes Excel read the file as UTF-8.
+    await fs.promises.writeFile(filePath, String.fromCharCode(0xfeff) + csv);
+  } catch (error) {
+    // A locked file is nearly always the previous export still open in Excel.
+    const locked = ['EBUSY', 'EPERM', 'EACCES'].includes(error.code);
+    throw new Error(`文件写不进去（${error.code || error.message}）${locked ? '；如果它正在 Excel 里打开，请先关掉再导出' : ''}`);
+  }
+  return { saved: true, lines };
 });
 ipcMain.on('open-report', (event) => {
   if (panelWin && event.sender === panelWin.webContents) openReportWindow();

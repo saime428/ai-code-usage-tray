@@ -4,9 +4,10 @@
 //   npm run usage                                  today, per tool: models, limits, sessions
 //   npm run usage -- --days 30                     30-day report: per tool and per day
 //   npm run usage -- --days 7 --by project         …or broken down by tool|day|hour|model|project|session
+//   npm run -s usage -- --days 30 --csv > usage.csv   the report window's CSV export (README, "Usage report")
 //
 // Report mode is lib/report.js buildReport, the same builder as the report window.
-const { collectLocalUsage, collectReport } = require('../lib/usage-worker');
+const { collectLocalUsage, collectReport, collectExport } = require('../lib/usage-worker');
 const { PROVIDERS, PROVIDER_IDS } = require('../lib/report');
 const { MAX_RANGE_DAYS } = require('../lib/range');
 
@@ -20,6 +21,8 @@ function parseArgs(argv) {
     if (flag === '--days' || flag === '--by') {
       if (inline === undefined) i += 1;
       args[flag.slice(2)] = value;
+    } else if (flag === '--csv') {
+      args.csv = true;
     } else if (flag === '--help' || flag === '-h') {
       args.help = true;
     } else {
@@ -33,6 +36,7 @@ function parseArgs(argv) {
     }
   }
   if (args.by !== null && !BY.includes(args.by)) throw new Error(`--by must be one of ${BY.join(', ')}`);
+  if (args.csv && args.by !== null) throw new Error('--csv is always one line per day, tool and model; drop --by');
   return args;
 }
 
@@ -70,9 +74,13 @@ function printToday() {
     const limits = id === 'claude'
       ? [['5h', u.rateLimits && u.rateLimits.fiveHour], ['7d', u.rateLimits && u.rateLimits.sevenDay]].filter(([, v]) => v)
       : ((u.rateLimits && u.rateLimits.windows) || []).map((w) => [`${w.windowMinutes}m`, w]);
-    if (limits.length) {
-      console.log(`Limits  ${limits.map(([label, v]) => `${label}=${Math.round(v.usedPercentage)}%`).join('  ')}${u.rateLimits.planType ? `  (${u.rateLimits.planType})` : ''}`);
+    const shown = limits.map(([label, v]) => `${label}=${Math.round(v.usedPercentage)}%`);
+    // Codex only: the credit balance its own /status shows (lib/codex-usage.js readCredits).
+    const credits = u.rateLimits && u.rateLimits.credits;
+    if (credits) {
+      shown.push(`credits=${credits.unlimited ? 'unlimited' : credits.balance ? Math.round(credits.balance).toLocaleString('en-US') : 'available'}`);
     }
+    if (shown.length) console.log(`Limits  ${shown.join('  ')}${u.rateLimits.planType ? `  (${u.rateLimits.planType})` : ''}`);
     console.log(`\nSessions in last 24h: ${u.sessions.length}`);
     for (const s of u.sessions.slice(0, 10)) {
       const mins = Math.round((Date.now() - s.mtime) / 60000);
@@ -156,7 +164,9 @@ function printReport(days, by) {
 try {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log('usage: npm run usage [-- --days N] [--by tool|day|hour|model|project|session]');
+    console.log('usage: npm run usage [-- --days N] [--by tool|day|hour|model|project|session | --csv]');
+  } else if (args.csv) {
+    process.stdout.write(collectExport({ days: args.days || 1 }).csv);
   } else if (args.days === null && args.by === null) {
     printToday();
   } else {

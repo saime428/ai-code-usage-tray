@@ -32,9 +32,9 @@
 | | |
 | --- | --- |
 | **Five tools in one place** | Claude Code, Claude Desktop, Codex CLI/Desktop, Grok CLI, Antigravity (IDE and CLI) and OpenCode share one panel. Antigravity and OpenCode tabs appear once their data exists on this machine. |
-| **Usage report** | A resizable report window across every tool: daily trend, hour of day, per tool, per project, the costliest sessions and per model, against the previous period. Also on the command line. |
+| **Usage report** | A resizable report window across every tool: daily trend, hour of day, per tool, per project, the costliest sessions and per model, against the previous period. Exports to CSV. Also on the command line. |
 | **Independent date ranges** | Each provider gets its own 1–90 day range. |
-| **Quota windows** | 5h / 7d usage percentages, reset times and data freshness. With a Claude account connected, the Fable window appears when available; while Antigravity runs, its Gemini and Claude/GPT windows too. |
+| **Quota windows** | 5h / 7d usage percentages, reset times and data freshness. With a Claude account connected, the Fable window appears when available; while Antigravity runs, its Gemini and Claude/GPT windows too. A Codex account with credits shows its balance. |
 | **Per-account usage** | Once enabled on this machine, tokens accumulate under the current account; older records stay out. The ledger is encrypted locally by Windows. |
 | **Session states** | Working, needs attention, and idle. Desktop sessions open straight from the panel. |
 | **Live activity ring** | While a session is running, that provider lights up with a ring of travelling light on the floating bar. It watches session directories for writes instead of waiting for the 30s refresh. Switch it to rainbow or turn it off. |
@@ -145,7 +145,7 @@ Open it from the tray menu (打开用量报表) or the panel's 报表 button. It
 | Per tool / hour of day | Each tool's amount, share, tokens, cache hit rate, requests and sessions; and when in the day the usage happens. |
 | Per project | Sessions grouped by working directory across tools (`C:\x` and `c:/x/` are one project), with Claude Code worktrees (`<repo>\.claude\worktrees\<name>`) folded into their repository. |
 | Costliest sessions | Title, project, client, amount, tokens, requests, last activity. Subagent work and history copied by resume or fork count toward the session that ran them. |
-| Per model | Requests, input, cache reads, output and amount per model; models without a price say so. |
+| Per model | Requests, input, cache reads, output and amount per model; models without a price say so. Antigravity's experiment arms of one model (`gemini-3.8-flash-n`, `gemini-3.7-flash-control`) are one row, under the model's name. |
 
 The amounts add up values of different kinds — API-equivalent for Claude, Codex and Antigravity, billed for Grok, recorded for OpenCode — and the report says so at the bottom. Token totals are put on one scale first: Codex and Grok count cache reads inside their input, the other three report them separately. The 90-day view has no comparison, because it would mean reading 180 days of history.
 
@@ -156,6 +156,35 @@ npm run usage -- --days 30                  # per tool and per day
 npm run usage -- --days 7 --by project      # or: tool, day, hour, model, project, session
 ```
 
+### Exporting to CSV
+
+The 导出 CSV button at the right of the filter row saves the range on screen, for the tools left switched on, to a file you choose (it suggests `Documents\ai-code-usage-<first day>_<last day>.csv`, or `ai-code-usage-<day>.csv` for a single day). One line per local day, tool and model:
+
+| Column | Meaning |
+| --- | --- |
+| `date` | Local calendar day, `YYYY-MM-DD`. |
+| `tool` | Claude, Codex, Grok, Antigravity or OpenCode. |
+| `model` | The model id as the report lists it. |
+| `requests` | API requests for Claude, Antigravity and OpenCode; turns for Codex and Grok. |
+| `input_tokens` | Input that was neither read from nor written to the cache. |
+| `cache_read_tokens`, `cache_write_tokens` | Cached input, apart from `input_tokens` for every tool — Codex and Grok count it inside their own input figure, and the export takes it back out. |
+| `output_tokens` | Output, reasoning included. |
+| `reasoning_tokens` | The share of `output_tokens` that was reasoning. Not an extra amount. |
+| `total_tokens` | `input_tokens + cache_read_tokens + cache_write_tokens + output_tokens` — the report's Token figure. |
+| `cost_usd` | The amount, in US dollars, to six decimals. |
+| `cost_basis` | What that amount is: `api` (API-equivalent list price), `billed` (what Grok CLI recorded as billed) or `recorded` (what OpenCode recorded). |
+| `priced` | `no` when the model has no price in the table: its tokens are counted and its `cost_usd` is 0. |
+
+The file is UTF-8 with a byte-order mark and CRLF line ends, so Excel opens it directly. Each tool's lines add up to that tool's row in the report for the same range. A model name that a spreadsheet would run as a formula (one starting with `=`, `+`, `-` or `@`) is written with a leading apostrophe. If the export fails with `EBUSY`, the file from an earlier export is still open in Excel: close it and export again. A failure message stays on its own line under the filters until the next export.
+
+From the command line, the same lines for every tool, as plain UTF-8 without the byte-order mark (`-s` keeps npm's own two lines out of it):
+
+```powershell
+npm run -s usage -- --days 30 --csv > usage.csv
+```
+
+In Windows PowerShell 5.1, `>` writes UTF-16; use `| Out-File -Encoding utf8 usage.csv` there, or run it from `cmd` or PowerShell 7.
+
 ## Where the data comes from
 
 | Client | Local source | Data provided |
@@ -165,7 +194,7 @@ npm run usage -- --days 7 --by project      # or: tool, day, hour, model, projec
 | Claude Desktop | `%APPDATA%/Claude/claude-code-sessions/**/*.json` | Claude Code / Cowork titles, client type, recent activity |
 | Claude Desktop Home | `%APPDATA%/Claude/IndexedDB/` | regular-chat titles, model, message counts, recent activity (no token detail) |
 | Claude account (optional) | Anthropic OAuth usage endpoint | official percentages and exact reset times |
-| Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | tokens, quota windows, models, session activity |
+| Codex CLI / Desktop | `~/.codex/sessions/**/*.jsonl` | tokens, quota windows, credit balance, models, session activity |
 | Grok CLI | `~/.grok/sessions/**/updates.jsonl` + `~/.grok/logs/unified.jsonl` | per-turn tokens, official billed cost, subscription weekly quota, session activity |
 | Antigravity (IDE and `agy` CLI) | `~/.gemini/antigravity*/conversations/*.db` + `conversation_summaries.db` | per-turn tokens and models, titles, workspaces, session activity |
 | Antigravity quota | the running Antigravity language server, over its local endpoint on 127.0.0.1 | 5-hour and weekly windows for Gemini and for Claude/GPT, with reset times |
@@ -185,7 +214,7 @@ Claude, Codex and Antigravity costs come from a hand-maintained table of officia
 - Claude Haiku 5.5's prompt-length tier: a request whose prompt (input, cache reads and cache writes) is over 100,000 tokens bills at 5x, output included. Each request is decided on its own.
 - Fast mode (2x) on Opus 5.5 / 5 / 4.8, and `inference_geo: "us"` (1.1x), read from each transcript row.
 - Codex long context (input over 272K: 2x input, 1.5x output).
-- Gemini context caching rates, and the Pro models' tier for prompts over 200K. Antigravity sends experiment ids such as `gemini-3.7-flash-control` or `gemini-3-flash-a`; they price as their model by the longest-prefix rule. Claude models used inside Antigravity price from the `claude` section.
+- Gemini context caching rates, and the Pro models' tier for prompts over 200K. Antigravity sends experiment ids such as `gemini-3.7-flash-control` or `gemini-3-flash-a`; they price as their model by the longest-prefix rule and are listed under its name. Only that shape is folded — a model id followed by `-control` or by one letter. Any other suffix (`-preview`, `-thinking`) keeps a row of its own, so that a model borrowing a shorter neighbour's price stays visible. Claude models used inside Antigravity price from the `claude` section.
 - Bedrock and Vertex model ids (`us.anthropic.…`, `name@date`), with the documented 10% regional premium; `global.` profiles at base price.
 - Retired models stay listed so older transcripts still price.
 
@@ -295,6 +324,21 @@ Neither the installer nor the portable build includes the hook scripts — get t
 
 `report-status.js` writes per-session states to `~/.claude/usage-tray-status/` and always exits fast, so it never slows Claude Code down. `report-rate-limits.js` uses the statusLine slot to capture official rate limits and prints nothing. Claude Code has a single statusLine slot — if you already use one, keep yours and skip that part; session states work without it. New sessions pick the hooks up automatically.
 
+<a id="reporting-a-problem"></a>
+## Reporting a problem
+
+Right-click the tray icon and choose 复制诊断信息 (copy diagnostics), then paste into the [issue](https://github.com/saime428/ai-code-usage-tray/issues). It puts a few dozen lines of plain text on the clipboard; nothing is sent anywhere, and you can read it before you paste it.
+
+| It contains | It leaves out |
+| --- | --- |
+| App version and build kind (installed, portable, dev), Electron, Windows version, language, primary display size and scaling | Session titles, project names and working directories |
+| The settings from the tray menu, the price table's date and whether it was downloaded | Account names, e-mail addresses and anything from the per-account ledger |
+| Per tool: whether its data folder exists, how the last read went, request count and amount for the panel's range, how many sessions are in each state, the quota figures and their age, models without a price | Tokens, credentials, prompts and replies |
+| Codex's sign-in mode; whether a Claude account is connected, and the status, error text and timing of its last quota request | Your user name: the home directory is written as `~` |
+| The last eight records of the hang log, with only the input-method processes named | The other process names in the hang log (they are counted) |
+
+Paths outside your home directory are included as they are — the app's own location, or an OpenCode store moved with `XDG_DATA_HOME`. If you keep the portable build in a folder whose name you would rather not share, edit that line before pasting.
+
 ## If the app stops responding
 
 Open it again. A new launch ends any copy that Windows reports as not responding and takes over. If that still does not help, end the process from Task Manager.
@@ -320,6 +364,8 @@ Input methods that load a text-service DLL into every program (Tencent WeType, f
 - OAuth login is optional. Local monitoring keeps working offline or when Anthropic rate-limits.
 - The hang log (`hang-log.jsonl`) stays on this machine. It holds timestamps, a step name, and process names with their start times — no usage data or session content.
 - `claude-oauth-throttle.json` records the last account quota request's status code and timestamps, so a rate-limit wait survives a restart. No tokens.
+- 复制诊断信息 only writes to the clipboard, and only when you choose it. What it includes is listed under [Reporting a problem](#reporting-a-problem).
+- A CSV export is written only where you save it, and holds dates, tool and model names, token counts and amounts — no session or project names.
 - Full details in the [Privacy Policy](PRIVACY.md).
 
 ## Code signing policy
@@ -340,7 +386,7 @@ cd ai-code-usage-tray
 npm ci
 npm test
 npm start
-npm run usage   # print today's usage in the terminal, no Electron needed (add -- --days 30 for a report)
+npm run usage   # print today's usage in the terminal, no Electron needed (add -- --days 30 for a report, --csv for the export)
 npm run check-prices   # check the price table against the vendors' pages and LiteLLM
 ```
 
@@ -364,12 +410,13 @@ lib/antigravity-usage.js  Antigravity conversation databases (protobuf decoding)
 lib/antigravity-quota.js  Antigravity quota from its running language server
 lib/opencode-usage.js   OpenCode's SQLite store
 lib/jsonl.js            line reader that resumes a file from where the last read stopped
-lib/report.js           shared per-hour rows, the panel summary and the cross-tool report
+lib/report.js           shared per-hour rows, the panel summary, the cross-tool report and its CSV export
 lib/usage-worker.js     worker thread that runs all of the above off the main process
 lib/prices.json         Claude / Codex / Gemini price table (the app also downloads it from main)
 lib/prices.js           price table validation, and the URLs it is downloaded from
 lib/claude-oauth.js     optional Claude OAuth / PKCE
 lib/hang-guard.js       hang log watchdog and not-responding instance lookup
+lib/diagnostics.js      the text behind the tray menu's 复制诊断信息
 renderer/index.html     full panel
 renderer/report.html    usage report window
 lib/activity.js         activity watch behind the ring (session writes + hook state)
@@ -401,6 +448,7 @@ Price fixes don't need a release — see [Updating the price table](#updating-th
 - The Grok weekly quota comes from what Grok CLI writes to disk: after a billing period rolls over it only reappears the next time you run Grok CLI (2–57 hours in local measurements). It stays hidden during that window — the weekly quota is account-wide, so you may have spent part of it on the web, and a guess would be worse than nothing.
 - Bedrock's own pricing for retired models is not modeled.
 - Codex fast mode (`service_tier: "priority"`, 2x the standard price, 2.5x on gpt-5.5) is not modeled; those turns show the standard price.
+- The Codex credit balance is the one Codex last wrote to a session file, shown with that time: credits spent elsewhere since (on the web, or on another machine) are not reflected until Codex runs here again. A workspace's monthly credit limit (`individual_limit`) is not shown — none of the author's sessions carries one to check against.
 - Models without a public list price (such as `codex-auto-review`) are excluded from the total and flagged, not estimated.
 - Antigravity's quota shows only once Antigravity has run since the app started (it is not stored on disk), and the `agy` CLI on its own does not provide it. OpenCode has no quota display. Neither has a click-to-open link or per-account tracking.
 - An Antigravity turn is dated by its own timestamp or, on newer builds that stopped writing one, by the matching step; a turn with neither falls back to the conversation's start time. That never happened on the databases checked so far.
@@ -408,7 +456,7 @@ Price fixes don't need a release — see [Updating the price table](#updating-th
 
 ## Contributing
 
-Issues and pull requests are welcome. Before submitting, run:
+Issues and pull requests are welcome. For a bug, paste the text from the tray menu's 复制诊断信息 — see [Reporting a problem](#reporting-a-problem). Before submitting a pull request, run:
 
 ```powershell
 npm test

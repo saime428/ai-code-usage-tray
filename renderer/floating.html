@@ -269,6 +269,15 @@
     const quotaRows = (provider, usage) => provider === 'antigravity' && usage.rateLimits
       ? usage.rateLimits.windows.map((value) => [`${value.group} ${value.windowMinutes === 300 ? '5h' : '7d'}`, value])
       : windowsFor(provider, usage);
+    // Codex 的点数余额(它自己的 /status 也有这一行);API key 模式下和额度窗口一样不显示
+    const creditsFor = (provider, usage) =>
+      (provider === 'codex' && !['api', 'apikey'].includes(usage.authMode) && usage.rateLimits?.credits) || null;
+    const creditsRow = (provider, usage) => {
+      const credits = creditsFor(provider, usage);
+      if (!credits) return '';
+      const text = credits.unlimited ? '不限' : credits.balance ? `余额 ${Math.round(credits.balance).toLocaleString('en-US')}` : '可用';
+      return `<div class="quota"><div class="quota-head"><strong>点数</strong><span>${text}</span></div></div>`;
+    };
     const isStale = (usage) =>
       usage.dataStatus?.state !== 'ok' || Boolean(usage.rateLimits && usage.rateLimits.stale);
     const tokenValue = (value) => Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -292,6 +301,13 @@
         return tokenUsage(provider, usage).total > 0 ? `没有额度窗口 · 显示${rangeLabel(usage)} Token` : `${rangeLabel(usage)}暂无用量`;
       }
       if (!windowsFor(provider, usage).length) {
+        // 窗口都过了重置时间,Codex 最后写下的点数余额还在:卡片上有这一行,状态就得说清它是哪时候的数,
+        // 不能在旁边写「额度数据尚不可用」
+        if (creditsFor(provider, usage)) {
+          return `没有有效的额度窗口 · 点数更新于 ${new Date(usage.rateLimits.updatedAt).toLocaleString('zh-CN', {
+            month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+          })}`;
+        }
         if (providerInfo[provider].quotaHint) return providerInfo[provider].quotaHint;
         return tokenUsage(provider, usage).total > 0
           ? `未提供额度 · 显示${rangeLabel(usage)} Token`
@@ -359,7 +375,8 @@
             }).join('') : tokens.total > 0 || info.noQuota
               ? `<div class="token-fallback"><div class="token-total"><small>${rangeLabel(usage)} Token</small>${formatTokens(tokens.total)}</div><div class="token-breakdown">输入 ${formatTokens(tokens.input)} · 输出 ${formatTokens(tokens.output)}</div></div>`
               : '<div class="empty-quota">额度 —</div>'}
-            <div class="provider-status ${stale || (!info.noQuota && !info.quotaHint && !windows.length && tokens.total === 0) ? 'bad' : ''}" title="${usage.rateLimits?.source === 'desktop' ? 'Claude Desktop 每约 5 分钟采样；≈ 为本地推算时间' : ''}">${statusText(usage, provider)}${usage.rateLimits?.source === 'desktop' ? ' · 重置时间为本地推算' : ''}</div>
+            ${creditsRow(provider, usage)}
+            <div class="provider-status ${stale || (!info.noQuota && !info.quotaHint && !windows.length && tokens.total === 0 && !creditsFor(provider, usage)) ? 'bad' : ''}" title="${usage.rateLimits?.source === 'desktop' ? 'Claude Desktop 每约 5 分钟采样；≈ 为本地推算时间' : ''}">${statusText(usage, provider)}${usage.rateLimits?.source === 'desktop' ? ' · 重置时间为本地推算' : ''}</div>
           </section>`;
         })
         .join('');
