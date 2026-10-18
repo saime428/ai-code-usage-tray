@@ -297,6 +297,15 @@
       minutes % 1440 === 0 ? minutes / 1440 + 'd' : minutes % 60 === 0 ? minutes / 60 + 'h' : minutes + 'm';
     const creditsText = (credits) =>
       credits.unlimited ? '不限' : credits.balance ? `余额 ${Math.round(credits.balance).toLocaleString('en-US')}` : '可用';
+    // 还剩多久重置(随 30 秒刷新走);具体时刻放在悬停提示里。同一段在 floating.html
+    const untilReset = (resetsAt) => {
+      const minutes = Math.ceil((resetsAt * 1000 - Date.now()) / 60000);
+      if (minutes <= 0) return '已到重置时间';
+      const d = Math.floor(minutes / 1440), h = Math.floor((minutes % 1440) / 60), m = minutes % 60;
+      return `${d ? `${d} 天${h ? ` ${h} 小时` : ''}` : h ? `${h} 小时${m ? ` ${m} 分` : ''}` : `${m} 分钟`}后重置`;
+    };
+    const resetAtText = (resetsAt) =>
+      `${new Date(resetsAt * 1000).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 重置`;
     const costText = (usage, isClaude, unknown) => {
       if (isClaude && usage.costCoverage === 'unavailable') return '—';
       const incomplete = (isClaude && usage.costCoverage === 'partial') || unknown.size > 0;
@@ -361,15 +370,13 @@
       limitsEl.innerHTML = limits.map(([label, value]) => {
         const pct = Math.round(value.usedPercentage);
         const level = pct >= 95 ? 'danger' : pct >= 80 ? 'warn' : '';
-        const reset = value.resetsAt
-          ? `${value.resetEstimated ? '≈ ' : ''}${new Date(value.resetsAt * 1000).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 重置`
-          : '';
+        const reset = value.resetsAt ? `${value.resetEstimated ? '≈ ' : ''}${untilReset(value.resetsAt)}` : '';
         const stale = Boolean(usage.rateLimits && usage.rateLimits.stale);
         const detail = [stale ? '数据已过期' : '', reset].filter(Boolean).join(' · ');
         return `<div class="limit ${stale ? 'stale' : ''}">
           <div class="limit-head"><strong>${label}</strong><span>${pct}% 已用</span></div>
           <div class="bar"><i class="${level}" style="width:${Math.min(100, Math.max(0, pct))}%"></i></div>
-          ${detail ? `<div class="reset ${stale ? 'warning' : ''}">${detail}</div>` : ''}
+          ${detail ? `<div class="reset ${stale ? 'warning' : ''}" title="${value.resetsAt ? resetAtText(value.resetsAt) : ''}">${detail}</div>` : ''}
         </div>`;
       }).join('') + creditsRow;
 
